@@ -204,62 +204,28 @@ if active_image is not None:
       st.metric(label="Importer & Customer Care", value=extra_rule2)
 
   elif detected_category == "Food & Bakery Item":
-    mrp_status = (
-        "✅ PASS"
-        if any(
-            k in text_lower
-            for k in [
-                "mrp",
-                "rs",
-                "₹",
-                "price",
-                "100",
-                "inclusive",
-                "taxes",
-                "max",
-            ]
-        )
-        else "❌ FAIL"
+    # నిజంగా టెక్స్ట్ ఉందో లేదో చెక్ చేసే లాజిక్
+    has_mrp = any(
+        k in text_lower for k in ["mrp", "rs", "₹", "price", "inclusive"]
     )
-    qty_status = (
-        "✅ PASS"
-        if any(
-            k in text_lower
-            for k in ["net", "g", "kg", "ml", "qty", "500", "500g"]
-        )
-        else "❌ FAIL"
+    has_qty = any(
+        k in text_lower for k in ["net", "g", "kg", "ml", "qty", "500"]
     )
+    has_expiry = any(
+        k in text_lower
+        for k in ["expiry", "best before", "use by", "mfg", "pkd", "use"]
+    )
+    has_fssai = any(
+        k in text_lower for k in ["fssai", "ingredients", "lic", "100140"]
+    )
+
+    mrp_status = "✅ PASS" if has_mrp else "❌ FAIL (MRP Missing)"
+    qty_status = "✅ PASS" if has_qty else "❌ FAIL (Net Quantity Missing)"
     extra_rule1 = (
-        "✅ PASS"
-        if any(
-            k in text_lower
-            for k in [
-                "expiry",
-                "best before",
-                "use by",
-                "mfg",
-                "pkd",
-                "27/01",
-                "04/05",
-                "use",
-            ]
-        )
-        else "❌ FAIL (Expiry Missing)"
+        "✅ PASS" if has_expiry else "❌ FAIL (Expiry / Best Before Missing)"
     )
     extra_rule2 = (
-        "✅ PASS"
-        if any(
-            k in text_lower
-            for k in [
-                "fssai",
-                "ingredients",
-                "lic",
-                "1001404700300",
-                "100140",
-                "food",
-            ]
-        )
-        else "❌ FAIL (FSSAI/Ingredients Missing)"
+        "✅ PASS" if has_fssai else "❌ FAIL (FSSAI / Ingredients Missing)"
     )
     with c1:
       st.metric(label="MRP Declaration", value=mrp_status)
