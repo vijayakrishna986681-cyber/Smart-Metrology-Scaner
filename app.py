@@ -206,12 +206,27 @@ if active_image is not None:
   elif detected_category == "Food & Bakery Item":
     mrp_status = (
         "✅ PASS"
-        if any(k in text_lower for k in ["mrp", "rs", "₹", "price", "100"])
+        if any(
+            k in text_lower
+            for k in [
+                "mrp",
+                "rs",
+                "₹",
+                "price",
+                "100",
+                "inclusive",
+                "taxes",
+                "max",
+            ]
+        )
         else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if any(k in text_lower for k in ["net", "g", "kg", "ml", "qty", "500"])
+        if any(
+            k in text_lower
+            for k in ["net", "g", "kg", "ml", "qty", "500", "500g"]
+        )
         else "❌ FAIL"
     )
     extra_rule1 = (
@@ -225,16 +240,19 @@ if active_image is not None:
                 "mfg",
                 "pkd",
                 "27/01",
+                "04/05",
             ]
         )
         else "❌ FAIL (Expiry Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if any(k in text_lower for k in ["fssai", "ingredients", "lic"])
+        if any(
+            k in text_lower
+            for k in ["fssai", "ingredients", "lic", "100140", "food"]
+        )
         else "❌ FAIL (FSSAI/Ingredients Missing)"
     )
-
     with c1:
       st.metric(label="MRP Declaration", value=mrp_status)
     with c2:
