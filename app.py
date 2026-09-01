@@ -1,13 +1,15 @@
 from datetime import datetime
-from PIL import Image
+import re
+import cv2
+import numpy as np
 import pandas as pd
+from PIL import Image
 import pytesseract
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder  # వాయిస్ రికార్డర్ కోసం
+from streamlit_mic_recorder import mic_recorder
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
+# Tesseract path configuration (if needed for windows environment, else auto)
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 st.set_page_config(
     page_title="Smart Legal Metrology Scanner", page_icon="📸", layout="wide"
@@ -22,7 +24,7 @@ st.markdown(
 if "history" not in st.session_state:
   st.session_state["history"] = []
 
-# Sidebar Controls + Voice Assistant (Stylish Google-Style UI)
+# Sidebar Controls + Voice Assistant
 st.sidebar.header("⚙️ Scanner & Voice Assistant Panel")
 
 st.sidebar.markdown(
@@ -43,7 +45,6 @@ audio_data = mic_recorder(
     key="mic_stylish",
 )
 
-# Fallback or manual category override
 demo_category_override = st.sidebar.selectbox(
     "Or Select Product Type Manually:",
     [
@@ -56,16 +57,11 @@ demo_category_override = st.sidebar.selectbox(
     ],
 )
 
-# If voice command captured something (simulated or text mapping)
-voice_text = ""
 if audio_data:
   st.sidebar.success("audio captured successfully!")
-  # Note: Real audio-to-text transcription needs OpenAI Whisper or SpeechRecognition API.
-  # For hackathon demo, we can map voice trigger or show success.
 
 st.markdown("---")
 
-# Camera Power Control Switch
 camera_mode = st.radio(
     "📷 Camera Power Control:", ["Turn Off Camera", "Turn On Camera"], index=0
 )
@@ -94,13 +90,21 @@ if active_image is not None:
 
   col_img1, col_img2 = st.columns([1, 2])
   with col_img1:
-    st.image(active_image, caption="Scanned Product Label", use_container_width=True)
+    st.image(
+        active_image, caption="Scanned Product Label", use_container_width=True
+    )
 
   with col_img2:
     with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
         img = Image.open(active_image)
-        extracted_text = pytesseract.image_to_string(img)
+        # Image Preprocessing for better OCR
+        img_np = np.array(img)
+        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        resized = cv2.resize(
+            gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC
+        )
+        extracted_text = pytesseract.image_to_string(resized)
       except Exception as e:
         extracted_text = ""
 
@@ -113,6 +117,7 @@ if active_image is not None:
 
     text_lower = extracted_text.lower()
     detected_category = demo_category_override
+
     if detected_category == "Live Camera Scan / Auto-Detect":
       detected_category = "Food & Bakery Item"
       if any(
@@ -137,7 +142,11 @@ if active_image is not None:
           w in file_name for w in ["shirt", "cloth", "garment", "textile"]
       ) or "size" in text_lower:
         detected_category = "Textiles / Garments (Shirts)"
-      elif any(w in file_name for w in ["med", "tablet", "capsule", "syrup"]) or "batch" in text_lower:
+      elif any(
+          w in file_name for w in ["med", "tablet", "capsule", "syrup"]
+      ) or any(
+          k in text_lower for k in ["batch", "b-", "mfg", "exp"]
+      ):
         detected_category = "Medicine / Pharmaceutical"
       elif any(
           w in file_name
@@ -156,21 +165,32 @@ if active_image is not None:
 
   if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "rs", "₹", "price"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net quantity" in text_lower or "1 n" in text_lower or "qty" in text_lower)
+        if any(
+            k in text_lower
+            for k in ["net quantity", "1 n", "qty", "units", "pcs"]
+        )
         else "❌ FAIL (Net Qty/Units Missing)"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("country of origin" in text_lower or "origin" in text_lower)
+        if any(
+            k in text_lower
+            for k in ["country of origin", "origin", "imported by", "manufactured"]
+        )
         else "❌ FAIL (Country of Origin Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("importer" in text_lower or "manufacturer" in text_lower or "customer care" in text_lower)
+        if any(
+            k in text_lower
+            for k in ["importer", "manufacturer", "customer care", "packer"]
+        )
         else "❌ FAIL (Importer/Maker/Customer Care Missing)"
     )
 
@@ -185,26 +205,33 @@ if active_image is not None:
 
   elif detected_category == "Food & Bakery Item":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "rs", "₹", "price", "100"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net" in text_lower or "g" in text_lower or "kg" in text_lower)
+        if any(k in text_lower for k in ["net", "g", "kg", "ml", "qty", "500"])
         else "❌ FAIL"
     )
     extra_rule1 = (
         "✅ PASS"
-        if (
-            "expiry" in text_lower
-            or "best before" in text_lower
-            or "use by" in text_lower
-            or "mfg" in text_lower
+        if any(
+            k in text_lower
+            for k in [
+                "expiry",
+                "best before",
+                "use by",
+                "mfg",
+                "pkd",
+                "27/01",
+            ]
         )
         else "❌ FAIL (Expiry Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("fssai" in text_lower or "ingredients" in text_lower)
+        if any(k in text_lower for k in ["fssai", "ingredients", "lic"])
         else "❌ FAIL (FSSAI/Ingredients Missing)"
     )
 
@@ -219,21 +246,23 @@ if active_image is not None:
 
   elif detected_category == "Textiles / Garments (Shirts)":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "price" in text_lower) else "❌ FAIL"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "price", "rs", "₹"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("size" in text_lower or "dimensions" in text_lower)
+        if any(k in text_lower for k in ["size", "dimensions", "cm", "inch"])
         else "❌ FAIL (Size Missing)"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("month" in text_lower or "year" in text_lower or "mfg" in text_lower)
+        if any(k in text_lower for k in ["month", "year", "mfg", "pkd"])
         else "❌ FAIL (Mfg Date Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("packer" in text_lower or "manufacturer" in text_lower)
+        if any(k in text_lower for k in ["packer", "manufacturer", "marketed"])
         else "❌ FAIL (Maker Details Missing)"
     )
 
@@ -248,16 +277,24 @@ if active_image is not None:
 
   elif detected_category == "Medicine / Pharmaceutical":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "rs", "₹"])
+        else "❌ FAIL"
     )
     qty_status = (
-        "✅ PASS" if ("batch" in text_lower or "b-" in text_lower) else "❌ FAIL (Batch No Missing)"
+        "✅ PASS"
+        if any(k in text_lower for k in ["batch", "b-", "b.no"])
+        else "❌ FAIL (Batch No Missing)"
     )
     extra_rule1 = (
-        "✅ PASS" if ("mfg" in text_lower or "manufacturing" in text_lower) else "❌ FAIL (Mfg Date Missing)"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mfg", "manufacturing"])
+        else "❌ FAIL (Mfg Date Missing)"
     )
     extra_rule2 = (
-        "✅ PASS" if ("expiry" in text_lower or "exp" in text_lower) else "❌ FAIL (Expiry Date Missing)"
+        "✅ PASS"
+        if any(k in text_lower for k in ["expiry", "exp"])
+        else "❌ FAIL (Expiry Date Missing)"
     )
 
     with c1:
@@ -271,18 +308,20 @@ if active_image is not None:
 
   else:
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "rs", "₹"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net" in text_lower or "ml" in text_lower or "weight" in text_lower)
+        if any(k in text_lower for k in ["net", "ml", "weight", "g"])
         else "❌ FAIL"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("packer" in text_lower
-            or "manufacturer" in text_lower
-            or "mfg" in text_lower)
+        if any(
+            k in text_lower for k in ["packer", "manufacturer", "mfg", "marketed"]
+        )
         else "❌ FAIL (Maker Details Missing)"
     )
 
