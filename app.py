@@ -163,7 +163,7 @@ if active_image is not None:
 
   c1, c2, c3, c4 = st.columns(4)
 
- if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
     mrp_status = (
         "✅ PASS"
         if any(
@@ -221,7 +221,6 @@ if active_image is not None:
       st.metric(label="Importer & Customer Care", value=extra_rule2)
 
   elif detected_category == "Food & Bakery Item":
-    # నిజంగా టెక్స్ట్ ఉందో లేదో చెక్ చేసే లాజిక్
     has_mrp = any(
         k in text_lower for k in ["mrp", "rs", "₹", "price", "inclusive"]
     )
