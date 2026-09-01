@@ -3,5 +3,3 @@ pytesseract
 opencv-python-headless
 numpy
 pandas
-streamlit-mic-recorder
-Pillow
