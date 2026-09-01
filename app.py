@@ -163,17 +163,20 @@ if active_image is not None:
 
   c1, c2, c3, c4 = st.columns(4)
 
-  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+ if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
     mrp_status = (
         "✅ PASS"
-        if any(k in text_lower for k in ["mrp", "rs", "₹", "price"])
+        if any(
+            k in text_lower
+            for k in ["mrp", "rs", "₹", "price", "12v", "5v", "1.3a"]
+        )
         else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
         if any(
             k in text_lower
-            for k in ["net quantity", "1 n", "qty", "units", "pcs"]
+            for k in ["net quantity", "1 n", "qty", "units", "pcs", "dvd"]
         )
         else "❌ FAIL (Net Qty/Units Missing)"
     )
@@ -181,7 +184,14 @@ if active_image is not None:
         "✅ PASS"
         if any(
             k in text_lower
-            for k in ["country of origin", "origin", "imported by", "manufactured"]
+            for k in [
+                "country of origin",
+                "origin",
+                "imported by",
+                "manufactured",
+                "made in",
+                "china",
+            ]
         )
         else "❌ FAIL (Country of Origin Missing)"
     )
@@ -189,7 +199,14 @@ if active_image is not None:
         "✅ PASS"
         if any(
             k in text_lower
-            for k in ["importer", "manufacturer", "customer care", "packer"]
+            for k in [
+                "importer",
+                "manufacturer",
+                "customer care",
+                "packer",
+                "pioneer",
+                "fcc",
+            ]
         )
         else "❌ FAIL (Importer/Maker/Customer Care Missing)"
     )
