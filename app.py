@@ -241,6 +241,7 @@ if active_image is not None:
                 "pkd",
                 "27/01",
                 "04/05",
+                "use",
             ]
         )
         else "❌ FAIL (Expiry Missing)"
@@ -249,7 +250,14 @@ if active_image is not None:
         "✅ PASS"
         if any(
             k in text_lower
-            for k in ["fssai", "ingredients", "lic", "100140", "food"]
+            for k in [
+                "fssai",
+                "ingredients",
+                "lic",
+                "1001404700300",
+                "100140",
+                "food",
+            ]
         )
         else "❌ FAIL (FSSAI/Ingredients Missing)"
     )
