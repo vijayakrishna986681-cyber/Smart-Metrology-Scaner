@@ -84,29 +84,14 @@ with col2:
                     4. Any violations or missing declarations found.
                     """
                     
-                    # Multiple fallback models to prevent 503 high-demand errors
-                    models_to_try = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash']
-                    response = None
-                    success = False
-                    last_error = None
+                    # Using strictly the latest recommended model gemini-3.6-flash
+                    response = client.models.generate_content(
+                        model='gemini-3.6-flash',
+                        contents=[image, prompt]
+                    )
                     
-                    for m in models_to_try:
-                        try:
-                            response = client.models.generate_content(
-                                model=m,
-                                contents=[image, prompt]
-                            )
-                            success = True
-                            break
-                        except Exception as err:
-                            last_error = err
-                            continue
-                    
-                    if success and response:
-                        st.success("Analysis Complete!")
-                        st.markdown(response.text)
-                    else:
-                        st.error(f"Servers are busy. Please try again in 10 seconds. Error: {last_error}")
+                    st.success("Analysis Complete!")
+                    st.markdown(response.text)
                     
             except Exception as e:
                 st.error(f"Error communicating with Gemini AI: {e}")
