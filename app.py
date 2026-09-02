@@ -96,7 +96,7 @@ if active_image is not None:
 
   with col_img2:
       with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
-      try:
+        try:
         img = Image.open(active_image).convert("RGB")
         img_np = np.array(img)
 
