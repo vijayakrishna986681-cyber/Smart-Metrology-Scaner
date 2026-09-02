@@ -114,6 +114,22 @@ if active_image is not None:
           )
           st.stop()
 
+        # 2. Check if a Human Face is in the image (Selfies / People photos)
+        face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        )
+        faces = face_cascade.detectMultiScale(
+            gray_check, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+        )
+
+        if len(faces) > 0:
+          st.error(
+              "⚠️ **Invalid Scan!** Human face detected. This app is designed"
+              " to scan **Product Labels** (Packaged Goods, Electronics, etc.)"
+              " for Legal Metrology compliance, not selfies or people!"
+          )
+          st.stop()
+
         # Image Preprocessing for better OCR
         gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
         resized = cv2.resize(
