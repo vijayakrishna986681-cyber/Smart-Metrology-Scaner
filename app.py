@@ -1,38 +1,39 @@
 from datetime import datetime
-import cv2
+import os
+from google import genai
+from google.genai import types
 import numpy as np
 import pandas as pd
 from PIL import Image
-import pytesseract
 import streamlit as st
 from streamlit_mic_recorder import mic_recorder
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
-
 st.set_page_config(
-    page_title="Smart Legal Metrology Scanner", page_icon="📸", layout="wide"
+    page_title="AI Smart Legal Metrology Scanner", page_icon="🛡️", layout="wide"
 )
 
-st.title("🛡️ Smart Legal Metrology Compliance Checker")
+st.title("🛡️ AI-Powered Smart Legal Metrology Compliance Checker")
 st.markdown(
-    "### SIH 2026 - Live Camera Scanner & Voice-Assisted Rule Validation"
-    " System"
+    "### SIH 2026 - Gemini Vision AI Powered Rule Validation System"
 )
 
 if "history" not in st.session_state:
   st.session_state["history"] = []
 
-# Sidebar Controls + Voice Assistant
-st.sidebar.header("⚙️ Scanner & Voice Assistant Panel")
+# Sidebar for API Key & Controls
+st.sidebar.header("⚙️ AI & Voice Panel")
 
+# Gemini API Key Input (రేపు డెమోకి మీ కీ ఇక్కడ ఇవ్వొచ్చు)
+api_key_input = st.sidebar.text_input(
+    "Enter Gemini API Key:", type="password", help="Enter your Google Gemini API key here"
+)
+
+st.sidebar.markdown("---")
 st.sidebar.markdown(
     """
     <div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px dashed #4f46e5;">
         <span style="font-size: 24px;">🎙️</span><br>
-        <b style="color: #333;">Voice Assistant</b><br>
-        <span style="font-size: 12px; color: #666;">Click below to speak product category</span>
+        <b style="color: #333;">Voice Assistant</b>
     </div>
 """,
     unsafe_allow_html=True,
@@ -45,24 +46,12 @@ audio_data = mic_recorder(
     key="mic_stylish",
 )
 
-demo_category_override = st.sidebar.selectbox(
-    "Or Select Product Type Manually:",
-    [
-        "Live Camera Scan / Auto-Detect",
-        "Electronics / Gadgets (Mobiles, Buds)",
-        "Cosmetics / Personal Care",
-        "Food & Bakery Item",
-        "Textiles / Garments (Shirts)",
-        "Medicine / Pharmaceutical",
-    ],
-)
-
 if audio_data:
   st.sidebar.success("Audio captured successfully!")
 
 st.markdown("---")
 
-# Camera Power Control Switch - Default to "Turn On Camera"
+# Camera Power Control Switch
 camera_mode = st.radio(
     "📷 Camera Power Control:", ["Turn On Camera", "Turn Off Camera"], index=0
 )
@@ -86,342 +75,64 @@ else:
   )
   active_image = uploaded_file
 
-
-def contains_any(text, keywords):
-  return any(k.lower() in text for k in keywords)
-
-
 if active_image is not None:
-  file_name = getattr(active_image, "name", "captured_product.jpg").lower()
-
   col_img1, col_img2 = st.columns([1, 2])
   with col_img1:
     st.image(active_image, caption="Scanned Product Label", width="stretch")
 
-  extracted_text = ""
   with col_img2:
-    with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
-      try:
-        img = Image.open(active_image).convert("RGB")
-        img_np = np.array(img)
-        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-        extracted_text = pytesseract.image_to_string(gray)
-      except Exception as e:
-        extracted_text = ""
+    if not api_key_input:
+      st.error("⚠️ దయచేసి సైడ్‌బార్‌లో మీ Gemini API Key ని ఎంటర్ చేయండి!")
+    else:
+      with st.spinner("🤖 Gemini AI is analyzing the product label & legal compliance..."):
+        try:
+          # Initialize Gemini Client
+          client = genai.Client(api_key=api_key_input)
+          
+          image_pil = Image.open(active_image)
 
-    with st.expander("📄 View Scanned Text & Extracted Data"):
-      st.write(
-          extracted_text
-          if extracted_text.strip()
-          else "No text found in image."
-      )
+          prompt = """
+          You are an expert Legal Metrology Compliance Inspector (Packaged Commodities Rules, 2011 in India).
+          Analyze the given product label image carefully.
+          
+          1. Detect the product category strictly from one of these: 
+             - "Electronics / Gadgets (Mobiles, Buds)"
+             - "Cosmetics / Personal Care"
+             - "Food & Bakery Item"
+             - "Textiles / Garments (Shirts)"
+             - "Medicine / Pharmaceutical"
+             - "General Product"
+          
+          2. Check for the mandatory declarations based on the category:
+             - For Electronics: MRP, Net Quantity, Country of Origin, Customer Care / Importer details.
+             - For Cosmetics: MRP, Net Quantity, Manufacturing Date, Maker/Manufacturer Details.
+             - For Food: MRP, Net Quantity, Expiry / Best Before / Use By, FSSAI & Ingredients.
+             - For Textiles: MRP, Size/Dimensions, Month & Year of Mfg, Packer Details.
+             - For Medicine: MRP, Batch Number, Manufacturing Date, Expiry Date / Use Before.
+          
+          Provide the output in a clean format:
+          Category: [Detected Category]
+          Rule 1 Name: [Name] | Status: [PASS or FAIL]
+          Rule 2 Name: [Name] | Status: [PASS or FAIL]
+          Rule 3 Name: [Name] | Status: [PASS or FAIL]
+          Rule 4 Name: [Name] | Status: [PASS or FAIL]
+          Summary: [Short explanation of findings]
+          """
 
-    text_lower = extracted_text.lower()
-    detected_category = demo_category_override
+          response = client.models.generate_content(
+              model="gemini-2.5-flash",
+              contents=[image_pil, prompt]
+          )
+          
+          ai_analysis = response.text
+          
+          st.success("✅ AI Analysis Completed Successfully!")
+          st.markdown(ai_analysis)
 
-    if detected_category == "Live Camera Scan / Auto-Detect":
-      # 1. Electronics Check First
-      if contains_any(
-          file_name,
-          [
-              "buds",
-              "realme",
-              "t300",
-              "audio",
-              "boat",
-              "mobile",
-              "phone",
-              "charger",
-              "electronic",
-          ],
-      ) or contains_any(
-          text_lower,
-          [
-              "realme",
-              "buds",
-              "t300",
-              "bluetooth",
-              "model",
-              "input",
-              "origin",
-              "earbuds",
-              "is 616:2017",
-          ],
-      ):
-        detected_category = "Electronics / Gadgets (Mobiles, Buds)"
-
-      # 2. Cosmetics Check
-      elif contains_any(
-          file_name,
-          ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"],
-      ) or contains_any(
-          text_lower,
-          [
-              "face cream",
-              "glowderma",
-              "cosmetics",
-              "ingredients:",
-              "aqua",
-              "glycerin",
-          ],
-      ):
-        detected_category = "Cosmetics / Personal Care"
-
-      # 3. Food Check
-      elif contains_any(
-          file_name, ["nutri", "britannia", "food", "biscuit", "snack"]
-      ) or contains_any(text_lower, ["fssai", "best before", "bakery"]):
-        detected_category = "Food & Bakery Item"
-
-      # 4. Textiles Check
-      elif contains_any(
-          file_name, ["shirt", "cloth", "garment", "textile", "pant"]
-      ) or contains_any(text_lower, ["size", "dimensions", "wash care"]):
-        detected_category = "Textiles / Garments (Shirts)"
-
-      # 5. Medicine Check
-      elif contains_any(
-          file_name, ["med", "tablet", "capsule", "syrup", "pharma"]
-      ) or contains_any(
-          text_lower,
-          ["batch no", "b.no", "mfg.dt", "exp.dt", "capsules", "tablets"],
-      ):
-        detected_category = "Medicine / Pharmaceutical"
-
-      else:
-        detected_category = "Electronics / Gadgets (Mobiles, Buds)"
-
-    st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
-
-  st.markdown("---")
-  st.subheader(
-      f"📊 Legal Metrology Compliance Validation Report ({detected_category}):"
-  )
-
-  c1, c2, c3, c4 = st.columns(4)
-
-  mrp_status = "N/A"
-  qty_status = "N/A"
-  extra_rule1 = "N/A"
-  extra_rule2 = "N/A"
-
-  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
-    mrp_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mrp", "rs", "₹", "price", "12v", "5v"])
-        else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["net quantity", "1 n", "qty", "units"])
-        else "❌ FAIL (Net Qty/Units Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(
-            text_lower,
-            [
-                "country of origin",
-                "origin",
-                "imported by",
-                "manufactured",
-                "made in",
-            ],
-        )
-        else "❌ FAIL (Country of Origin Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(
-            text_lower,
-            ["importer", "manufacturer", "customer care", "packer"],
-        )
-        else "❌ FAIL (Importer/Maker/Customer Care Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Net Quantity / Units", qty_status)
-    with c3:
-      st.metric("Country of Origin", extra_rule1)
-    with c4:
-      st.metric("Importer & Customer Care", extra_rule2)
-
-  elif detected_category == "Cosmetics / Personal Care":
-    mrp_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mrp", "rs", "₹", "price"])
-        else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["net quantity", "g", "ml", "qty"])
-        else "❌ FAIL (Net Quantity Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mfg", "mfg. date", "manufacturing"])
-        else "❌ FAIL (Mfg Date Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(
-            text_lower,
-            ["marketed by", "manufactured by", "care", "use before"],
-        )
-        else "❌ FAIL (Maker Details Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Net Quantity", qty_status)
-    with c3:
-      st.metric("Manufacturing Date", extra_rule1)
-    with c4:
-      st.metric("Manufacturer Details", extra_rule2)
-
-  elif detected_category == "Food & Bakery Item":
-    mrp_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mrp", "rs", "₹", "price"])
-        else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["net", "g", "kg", "ml", "qty"])
-        else "❌ FAIL"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(
-            text_lower, ["expiry", "best before", "use by", "mfg", "pkd"]
-        )
-        else "❌ FAIL (Expiry Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["fssai", "ingredients", "lic"])
-        else "❌ FAIL (FSSAI/Ingredients Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Net Quantity", qty_status)
-    with c3:
-      st.metric("Expiry / Best Before", extra_rule1)
-    with c4:
-      st.metric("FSSAI & Ingredients", extra_rule2)
-
-  elif detected_category == "Textiles / Garments (Shirts)":
-    mrp_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mrp", "price", "rs", "₹"])
-        else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["size", "dimensions", "cm", "inch"])
-        else "❌ FAIL (Size Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["month", "year", "mfg", "pkd"])
-        else "❌ FAIL (Mfg Date Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["packer", "manufacturer", "marketed"])
-        else "❌ FAIL (Maker Details Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Size & Dimensions", qty_status)
-    with c3:
-      st.metric("Month & Year of Mfg", extra_rule1)
-    with c4:
-      st.metric("Packer Details", extra_rule2)
-
-  elif detected_category == "Medicine / Pharmaceutical":
-    mrp_status = (
-        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹"]) else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["batch", "b-", "b.no"])
-        else "❌ FAIL (Batch No Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mfg", "manufacturing"])
-        else "❌ FAIL (Mfg Date Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["expiry", "exp", "use before"])
-        else "❌ FAIL (Expiry Date Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Batch Number", qty_status)
-    with c3:
-      st.metric("Manufacturing Date", extra_rule1)
-    with c4:
-      st.metric("Expiry Date (Mandatory)", extra_rule2)
-
-  else:
-    mrp_status = (
-        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹"]) else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["net", "ml", "weight", "g"])
-        else "❌ FAIL"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["packer", "manufacturer", "mfg", "marketed"])
-        else "❌ FAIL (Maker Details Missing)"
-    )
-
-    c_gen1, c_gen2, c_gen3 = st.columns(3)
-    with c_gen1:
-      st.metric("MRP Declaration", mrp_status)
-    with c_gen2:
-      st.metric("Net Quantity / Content", qty_status)
-    with c_gen3:
-      st.metric("Packer / Manufacturer", extra_rule1)
-
-  scan_record = {
-      "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-      "Category": detected_category,
-      "MRP Status": mrp_status,
-      "Compliance Status": "Checked",
-  }
-
-  if (
-      not st.session_state["history"]
-      or st.session_state["history"][-1]["Time"] != scan_record["Time"]
-  ):
-    st.session_state["history"].append(scan_record)
+        except Exception as e:
+          st.error(f"Error communicating with Gemini AI: {e}")
 
 st.markdown("---")
-st.subheader("📈 Live Scan History & Analytics Counter")
-
+st.subheader("📈 Live Scan History")
 total_scans = len(st.session_state["history"])
-st.metric(label="📊 Total Products Scanned in Current Session", value=total_scans)
-
-if total_scans > 0:
-  df_history = pd.DataFrame(st.session_state["history"])
-  st.dataframe(df_history, width="stretch")
-else:
-  st.info(
-      "No scans recorded yet. Use the camera scanner above to start scanning"
-      " products."
-  )
+st.metric(label="📊 Total Scans", value=total_scans)
