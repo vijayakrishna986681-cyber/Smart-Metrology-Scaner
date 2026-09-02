@@ -165,7 +165,7 @@ if active_image is not None:
     detected_category = demo_category_override
 
     if detected_category == "Live Camera Scan / Auto-Detect":
-      detected_category = "Food & Bakery Item"
+      # 1. Electronics / Gadgets Check (First Priority)
       if any(
           w in file_name
           for w in [
@@ -181,25 +181,50 @@ if active_image is not None:
           ]
       ) or any(
           k in text_lower
-          for k in ["buds", "audio", "bluetooth", "model", "input", "origin"]
+          for k in [
+              "realme",
+              "buds",
+              "t300",
+              "audio",
+              "bluetooth",
+              "model",
+              "input",
+              "output",
+              "charger",
+              "adapter",
+              "is 616",
+              "bis.gov.in",
+          ]
       ):
         detected_category = "Electronics / Gadgets (Mobiles, Buds)"
+
+      # 2. Medicine / Pharmaceutical Check
       elif any(
-          w in file_name for w in ["shirt", "cloth", "garment", "textile"]
-      ) or "size" in text_lower:
-        detected_category = "Textiles / Garments (Shirts)"
-      elif any(
-          w in file_name for w in ["med", "tablet", "capsule", "syrup"]
+          w in file_name for w in ["med", "tablet", "capsule", "syrup", "pharma"]
       ) or any(
-          k in text_lower for k in ["batch", "b-", "mfg", "exp"]
+          k in text_lower for k in ["batch no", "b.no", "mfg.dt", "exp.dt", "capsules", "tablets", "syrup"]
       ):
         detected_category = "Medicine / Pharmaceutical"
+
+      # 3. Textiles / Garments Check
       elif any(
-          w in file_name
-          for w in ["soap", "cream", "shampoo", "paste", "lotion"]
+          w in file_name for w in ["shirt", "cloth", "garment", "textile", "pant"]
+      ) or any(
+          k in text_lower for k in ["size", "dimensions", "wash care", "cotton", "100% cotton"]
+      ):
+        detected_category = "Textiles / Garments (Shirts)"
+
+      # 4. Cosmetics / Personal Care Check
+      elif any(
+          w in file_name for w in ["soap", "cream", "shampoo", "paste", "lotion", "oil"]
+      ) or any(
+          k in text_lower for k in ["net vol", "mfg by", "cosmetics", "shampoo", "toothpaste"]
       ):
         detected_category = "Cosmetics / Personal Care"
 
+      # 5. Food & Bakery Item (Default for food packs)
+      else:
+        detected_category = "Food & Bakery Item"
     st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
 
   st.markdown("---")
