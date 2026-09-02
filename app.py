@@ -165,8 +165,27 @@ if active_image is not None:
     detected_category = demo_category_override
 
     if detected_category == "Live Camera Scan / Auto-Detect":
-      # 1. Electronics / Gadgets Check (First Priority)
+      # 1. Cosmetics / Personal Care Check (Priority check for creams, soaps, face cream)
       if any(
+          w in file_name
+          for w in ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"]
+      ) or any(
+          k in text_lower
+          for k in [
+              "face cream",
+              "glowderma",
+              "net quantity",
+              "mfg. date",
+              "use before",
+              "cosmetics",
+              "ingredients:",
+              "aqua, glycerin",
+          ]
+      ):
+        detected_category = "Cosmetics / Personal Care"
+
+      # 2. Electronics / Gadgets Check
+      elif any(
           w in file_name
           for w in [
               "buds",
@@ -185,46 +204,43 @@ if active_image is not None:
               "realme",
               "buds",
               "t300",
-              "audio",
               "bluetooth",
               "model",
               "input",
-              "output",
-              "charger",
-              "adapter",
               "is 616",
               "bis.gov.in",
           ]
       ):
         detected_category = "Electronics / Gadgets (Mobiles, Buds)"
 
-      # 2. Medicine / Pharmaceutical Check
+      # 3. Medicine / Pharmaceutical Check
       elif any(
           w in file_name for w in ["med", "tablet", "capsule", "syrup", "pharma"]
       ) or any(
-          k in text_lower for k in ["batch no", "b.no", "mfg.dt", "exp.dt", "capsules", "tablets", "syrup"]
+          k in text_lower
+          for k in ["batch no", "b.no", "mfg.dt", "exp.dt", "capsules", "tablets"]
       ):
         detected_category = "Medicine / Pharmaceutical"
 
-      # 3. Textiles / Garments Check
+      # 4. Textiles / Garments Check
       elif any(
           w in file_name for w in ["shirt", "cloth", "garment", "textile", "pant"]
       ) or any(
-          k in text_lower for k in ["size", "dimensions", "wash care", "cotton", "100% cotton"]
+          k in text_lower for k in ["size", "dimensions", "wash care", "cotton"]
       ):
         detected_category = "Textiles / Garments (Shirts)"
 
-      # 4. Cosmetics / Personal Care Check
+      # 5. Food & Bakery Item Check (Strict check so it won't take everything)
       elif any(
-          w in file_name for w in ["soap", "cream", "shampoo", "paste", "lotion", "oil"]
+          w in file_name for w in ["nutri", "britannia", "food", "biscuit", "snack"]
       ) or any(
-          k in text_lower for k in ["net vol", "mfg by", "cosmetics", "shampoo", "toothpaste"]
+          k in text_lower for k in ["fssai", "best before", "bakery"]
       ):
-        detected_category = "Cosmetics / Personal Care"
-
-      # 5. Food & Bakery Item (Default for food packs)
-      else:
         detected_category = "Food & Bakery Item"
+
+      # 6. Final General Fallback
+      else:
+        detected_category = "Cosmetics / Personal Care"
     st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
 
   st.markdown("---")
