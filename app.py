@@ -18,9 +18,9 @@ RULES = {
     "medicines": ["batch", "expiry", "license", "dosage"]
 }
 
-# Sidebar for API Key
+# Sidebar for API Key configuration
 st.sidebar.header("Configuration")
-api_key_input = st.sidebar.text_input("Enter Gemini API Key:", type="password")
+api_key_input = st.sidebar.text_input("Enter Gemini API Key:", type="password", help="Enter your Google Gemini API Key")
 
 def detect_category(text: str):
     t = text.lower()
@@ -38,7 +38,7 @@ def gemini_call_with_retry(client, image_bytes, mime_type, max_attempts=3):
     for attempt in range(max_attempts):
         try:
             return client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 contents=[
                     "Analyze this product label image thoroughly. Extract all visible text, declarations, MRP, net quantity, manufacturer details, and category-specific details accurately.",
                     types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
@@ -72,7 +72,6 @@ if uploaded:
     st.image(img, caption="Preview", use_container_width=True)
 
     if st.button("Run Compliance Check", type="primary"):
-        # Use sidebar key first, fallback to st.secrets if available
         active_api_key = api_key_input
         if not active_api_key:
             try:
@@ -81,7 +80,7 @@ if uploaded:
                 pass
 
         if not active_api_key:
-            st.error("Please enter your Gemini API Key in the sidebar or configure Streamlit secrets.")
+            st.error("Please enter your Gemini API Key in the sidebar.")
         else:
             st.session_state.count += 1
 
@@ -90,7 +89,7 @@ if uploaded:
                 image_bytes = uploaded.getvalue()
                 mime_type = uploaded.type if getattr(uploaded, "type", None) else "image/jpeg"
 
-                with st.spinner("Analyzing product label against Legal Metrology rules..."):
+                with st.spinner("Analyzing product label against Legal Metrology rules using Gemini 3.6 Flash..."):
                     response = gemini_call_with_retry(client, image_bytes, mime_type)
 
                 extracted_text = response.text or ""
@@ -99,7 +98,6 @@ if uploaded:
 
                 required_fields = RULES["base"] + RULES.get(final_category, [])
                 
-                # Check fields intelligently
                 present_fields = []
                 missing_fields = []
                 t_lower = extracted_text.lower()
