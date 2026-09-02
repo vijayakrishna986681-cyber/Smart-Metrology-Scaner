@@ -58,7 +58,7 @@ demo_category_override = st.sidebar.selectbox(
 )
 
 if audio_data:
-  st.sidebar.success("audio captured successfully!")
+  st.sidebar.success("Audio captured successfully!")
 
 st.markdown("---")
 
@@ -107,8 +107,8 @@ if active_image is not None:
         if avg_brightness < 25:
           st.error(
               "⚠️ **Invalid Image Detected!** Camera seems to be blocked (Finger"
-              " on lens) or extremely dark. Please capture a clear product"
-              " label."
+              " on lens) or extremely dark. Please take a clear photo of the"
+              " product label."
           )
           st.stop()
 
@@ -122,28 +122,32 @@ if active_image is not None:
 
         if len(faces) > 0:
           st.error(
-              "⚠️ **Invalid Scan!** Human face detected. Please scan a valid"
-              " **Product Label**, not a person or selfie!"
+              "⚠️ **Invalid Scan!** Human face / selfie detected. Please scan"
+              " a valid **Product Label**, not a person!"
           )
           st.stop()
 
-        # Image Preprocessing for better OCR
+        # 3. Advanced OCR Image Preprocessing
         resized = cv2.resize(
-            gray_check,
-            None,
-            fx=2.0,
-            fy=2.0,
-            interpolation=cv2.INTER_CUBIC,
+            gray_check, None, fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC
         )
-        extracted_text = pytesseract.image_to_string(resized)
+        _, thresh = cv2.threshold(
+            resized, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+
+        extracted_text = pytesseract.image_to_string(thresh)
+        if not extracted_text.strip():
+          extracted_text = pytesseract.image_to_string(resized)
+
       except Exception as e:
         extracted_text = ""
 
-    # 3. Check if text is completely missing (Blank or useless image)
-    if not extracted_text or len(extracted_text.strip()) < 3:
+    # 4. Check if text is completely missing (Blank / Useless image)
+    if not extracted_text or len(extracted_text.strip()) < 2:
       st.error(
-          "⚠️ **No Text Found!** The captured image does not contain readable"
-          " text or product details. Please upload a clear product label."
+          "⚠️ **Invalid Image / No Text Found!** The captured photo does not"
+          " contain any readable text or product details. Please take a correct"
+          " photo of the product label."
       )
       st.stop()
 
