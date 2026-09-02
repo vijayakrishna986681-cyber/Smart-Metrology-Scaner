@@ -5,7 +5,7 @@ import pandas as pd
 from PIL import Image
 import pytesseract
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder  # వాయిస్ రికార్డర్ కోసం
+from streamlit_mic_recorder import mic_recorder
 
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -24,7 +24,7 @@ st.markdown(
 if "history" not in st.session_state:
   st.session_state["history"] = []
 
-# Sidebar Controls + Voice Assistant (Stylish Google-Style UI)
+# Sidebar Controls + Voice Assistant
 st.sidebar.header("⚙️ Scanner & Voice Assistant Panel")
 
 st.sidebar.markdown(
@@ -45,13 +45,12 @@ audio_data = mic_recorder(
     key="mic_stylish",
 )
 
-# Fallback or manual category override
 demo_category_override = st.sidebar.selectbox(
     "Or Select Product Type Manually:",
     [
         "Live Camera Scan / Auto-Detect",
-        "Cosmetics / Personal Care",
         "Electronics / Gadgets (Mobiles, Buds)",
+        "Cosmetics / Personal Care",
         "Food & Bakery Item",
         "Textiles / Garments (Shirts)",
         "Medicine / Pharmaceutical",
@@ -59,13 +58,13 @@ demo_category_override = st.sidebar.selectbox(
 )
 
 if audio_data:
-  st.sidebar.success("audio captured successfully!")
+  st.sidebar.success("Audio captured successfully!")
 
 st.markdown("---")
 
-# Camera Power Control Switch
+# Camera Power Control Switch - Default to "Turn On Camera"
 camera_mode = st.radio(
-    "📷 Camera Power Control:", ["Turn Off Camera", "Turn On Camera"], index=0
+    "📷 Camera Power Control:", ["Turn On Camera", "Turn Off Camera"], index=0
 )
 
 camera_image = None
@@ -97,7 +96,7 @@ if active_image is not None:
 
   col_img1, col_img2 = st.columns([1, 2])
   with col_img1:
-    st.image(active_image, caption="Scanned Product Label", width='stretch')
+    st.image(active_image, caption="Scanned Product Label", width="stretch")
 
   extracted_text = ""
   with col_img2:
@@ -121,29 +120,8 @@ if active_image is not None:
     detected_category = demo_category_override
 
     if detected_category == "Live Camera Scan / Auto-Detect":
-      # 1. Cosmetics Check First (to prevent face creams from going to medicine)
+      # 1. Electronics Check First
       if contains_any(
-          file_name,
-          ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"],
-      ) or contains_any(
-          text_lower,
-          [
-              "face cream",
-              "glowderma",
-              "net quantity",
-              "mfg. date",
-              "use before",
-              "cosmetics",
-              "ingredients:",
-              "aqua",
-              "glycerin",
-              "bright glow",
-          ],
-      ):
-        detected_category = "Cosmetics / Personal Care"
-
-      # 2. Electronics Check
-      elif contains_any(
           file_name,
           [
               "buds",
@@ -158,9 +136,36 @@ if active_image is not None:
           ],
       ) or contains_any(
           text_lower,
-          ["realme", "buds", "t300", "bluetooth", "model", "input", "origin"],
+          [
+              "realme",
+              "buds",
+              "t300",
+              "bluetooth",
+              "model",
+              "input",
+              "origin",
+              "earbuds",
+              "is 616:2017",
+          ],
       ):
         detected_category = "Electronics / Gadgets (Mobiles, Buds)"
+
+      # 2. Cosmetics Check
+      elif contains_any(
+          file_name,
+          ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"],
+      ) or contains_any(
+          text_lower,
+          [
+              "face cream",
+              "glowderma",
+              "cosmetics",
+              "ingredients:",
+              "aqua",
+              "glycerin",
+          ],
+      ):
+        detected_category = "Cosmetics / Personal Care"
 
       # 3. Food Check
       elif contains_any(
@@ -184,7 +189,7 @@ if active_image is not None:
         detected_category = "Medicine / Pharmaceutical"
 
       else:
-        detected_category = "Cosmetics / Personal Care"
+        detected_category = "Electronics / Gadgets (Mobiles, Buds)"
 
     st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
 
@@ -200,39 +205,7 @@ if active_image is not None:
   extra_rule1 = "N/A"
   extra_rule2 = "N/A"
 
-  if detected_category == "Cosmetics / Personal Care":
-    mrp_status = (
-        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹", "price"]) else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS"
-        if contains_any(text_lower, ["net quantity", "g", "ml", "qty"])
-        else "❌ FAIL (Net Quantity Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS"
-        if contains_any(text_lower, ["mfg", "mfg. date", "manufacturing"])
-        else "❌ FAIL (Mfg Date Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS"
-        if contains_any(
-            text_lower,
-            ["marketed by", "manufactured by", "care", "use before"],
-        )
-        else "❌ FAIL (Maker Details Missing)"
-    )
-
-    with c1:
-      st.metric("MRP Declaration", mrp_status)
-    with c2:
-      st.metric("Net Quantity", qty_status)
-    with c3:
-      st.metric("Manufacturing Date", extra_rule1)
-    with c4:
-      st.metric("Manufacturer Details", extra_rule2)
-
-  elif detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
     mrp_status = (
         "✅ PASS"
         if contains_any(text_lower, ["mrp", "rs", "₹", "price", "12v", "5v"])
@@ -275,9 +248,45 @@ if active_image is not None:
     with c4:
       st.metric("Importer & Customer Care", extra_rule2)
 
+  elif detected_category == "Cosmetics / Personal Care":
+    mrp_status = (
+        "✅ PASS"
+        if contains_any(text_lower, ["mrp", "rs", "₹", "price"])
+        else "❌ FAIL"
+    )
+    qty_status = (
+        "✅ PASS"
+        if contains_any(text_lower, ["net quantity", "g", "ml", "qty"])
+        else "❌ FAIL (Net Quantity Missing)"
+    )
+    extra_rule1 = (
+        "✅ PASS"
+        if contains_any(text_lower, ["mfg", "mfg. date", "manufacturing"])
+        else "❌ FAIL (Mfg Date Missing)"
+    )
+    extra_rule2 = (
+        "✅ PASS"
+        if contains_any(
+            text_lower,
+            ["marketed by", "manufactured by", "care", "use before"],
+        )
+        else "❌ FAIL (Maker Details Missing)"
+    )
+
+    with c1:
+      st.metric("MRP Declaration", mrp_status)
+    with c2:
+      st.metric("Net Quantity", qty_status)
+    with c3:
+      st.metric("Manufacturing Date", extra_rule1)
+    with c4:
+      st.metric("Manufacturer Details", extra_rule2)
+
   elif detected_category == "Food & Bakery Item":
     mrp_status = (
-        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹", "price"]) else "❌ FAIL"
+        "✅ PASS"
+        if contains_any(text_lower, ["mrp", "rs", "₹", "price"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
@@ -308,7 +317,9 @@ if active_image is not None:
 
   elif detected_category == "Textiles / Garments (Shirts)":
     mrp_status = (
-        "✅ PASS" if contains_any(text_lower, ["mrp", "price", "rs", "₹"]) else "❌ FAIL"
+        "✅ PASS"
+        if contains_any(text_lower, ["mrp", "price", "rs", "₹"])
+        else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
@@ -408,7 +419,7 @@ st.metric(label="📊 Total Products Scanned in Current Session", value=total_sc
 
 if total_scans > 0:
   df_history = pd.DataFrame(st.session_state["history"])
-  st.dataframe(df_history, width='stretch')
+  st.dataframe(df_history, width="stretch")
 else:
   st.info(
       "No scans recorded yet. Use the camera scanner above to start scanning"
