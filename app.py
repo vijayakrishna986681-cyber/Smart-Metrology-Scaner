@@ -85,8 +85,9 @@ with col2:
                     4. Any violations or missing declarations found.
                     """
                     
+                    # Updated to gemini-1.5-flash which is universally supported for all new and existing API keys
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-1.5-flash',
                         contents=[image, prompt]
                     )
                     
