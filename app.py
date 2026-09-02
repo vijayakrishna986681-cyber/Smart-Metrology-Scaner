@@ -2,6 +2,9 @@ import streamlit as st
 from PIL import Image
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
+import time
+import random
 
 st.set_page_config(page_title="Smart Legal Metrology Checker", layout="centered")
 
@@ -24,13 +27,31 @@ def detect_category(text: str):
     category = max(scores, key=scores.get)
     return category, scores
 
-def present(text: str, keyword: str):
-    return keyword.lower() in text.lower()
-
 def field_check(text: str, required_fields):
-    present_fields = [f for f in required_fields if present(text, f)]
+    t = text.lower()
+    present_fields = [f for f in required_fields if f.lower() in t]
     missing_fields = [f for f in required_fields if f not in present_fields]
     return present_fields, missing_fields
+
+def gemini_call_with_retry(client, image_bytes, mime_type, max_attempts=4):
+    last_err = None
+    for attempt in range(max_attempts):
+        try:
+            return client.models.generate_content(
+                model="gemini-3.7-flash",
+                contents=[
+                    "Extract all visible text from this product label. Return only plain text.",
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+            )
+        except ClientError as e:
+            last_err = e
+            msg = str(e)
+            if "503" not in msg and "UNAVAILABLE" not in msg and "429" not in msg:
+                raise
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            time.sleep(wait)
+    raise last_err
 
 if "count" not in st.session_state:
     st.session_state.count = 0
@@ -59,13 +80,8 @@ if uploaded:
             image_bytes = uploaded.getvalue()
             mime_type = uploaded.type if getattr(uploaded, "type", None) else "image/jpeg"
 
-            response = client.models.generate_content(
-                model="gemini-3.7-flash",
-                contents=[
-                    "Extract all visible text from this product label. Return only plain text.",
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                ],
-            )
+            with st.spinner("Analyzing image...", show_time=True):
+                response = gemini_call_with_retry(client, image_bytes, mime_type)
 
             extracted_text = response.text or ""
             detected_category, scores = detect_category(extracted_text)
