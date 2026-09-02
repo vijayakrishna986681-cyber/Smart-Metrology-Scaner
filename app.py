@@ -2,32 +2,35 @@ import streamlit as st
 from PIL import Image
 from google import genai
 from google.genai import types
-import json
-import re
 
 st.set_page_config(page_title="Smart Legal Metrology Checker", layout="centered")
 
 RULES = {
-    "base": ["product name", "manufacturer", "net quantity", "mfg date or import date", "mrp"],
+    "base": ["product", "manufacturer", "quantity", "mrp"],
     "food": ["ingredients", "best before"],
-    "cosmetics": ["batch no", "expiry date"],
-    "electronics": ["model number", "manufacturer details"],
-    "medicines": ["batch no", "expiry date", "license no"]
+    "cosmetics": ["batch", "expiry"],
+    "electronics": ["model", "warranty", "manufacturer"],
+    "medicines": ["batch", "expiry", "license"]
 }
 
-def detect_category(text):
+def detect_category(text: str):
     t = text.lower()
     scores = {
         "food": sum(k in t for k in ["ingredients", "nutrition", "sugar", "salt", "packaged food"]),
-        "cosmetics": sum(k in t for k in ["cream", "lotion", "shampoo", "soap", "cosmetic"]),
-        "electronics": sum(k in t for k in ["voltage", "warranty", "model", "charger", "electronics"]),
-        "medicines": sum(k in t for k in ["tablet", "capsule", "syrup", "dosage", "medicine"])
+        "cosmetics": sum(k in t for k in ["cream", "lotion", "shampoo", "soap", "cosmetic", "beauty"]),
+        "electronics": sum(k in t for k in ["voltage", "warranty", "model", "charger", "battery", "electronics"]),
+        "medicines": sum(k in t for k in ["tablet", "capsule", "syrup", "dosage", "medicine", "pharma"])
     }
-    return max(scores, key=scores.get), scores
+    category = max(scores, key=scores.get)
+    return category, scores
 
-def field_present(text, keywords):
-    t = text.lower()
-    return any(k in t for k in keywords)
+def present(text: str, keyword: str):
+    return keyword.lower() in text.lower()
+
+def field_check(text: str, required_fields):
+    present_fields = [f for f in required_fields if present(text, f)]
+    missing_fields = [f for f in required_fields if f not in present_fields]
+    return present_fields, missing_fields
 
 if "count" not in st.session_state:
     st.session_state.count = 0
@@ -35,64 +38,64 @@ if "history" not in st.session_state:
     st.session_state.history = []
 
 st.title("Smart Legal Metrology Checker")
-st.caption("Capture product label and check mandatory declarations")
+st.caption("Capture or upload a product label, then check compliance.")
 
-uploaded = st.camera_input("Take product photo") or st.file_uploader("Upload product image", type=["jpg", "jpeg", "png"])
+uploaded = st.camera_input("Take product photo") or st.file_uploader(
+    "Upload product image",
+    type=["jpg", "jpeg", "png"]
+)
+
+mode = st.selectbox("Category mode", ["auto", "food", "cosmetics", "electronics", "medicines"])
 
 if uploaded:
     img = Image.open(uploaded)
     st.image(img, caption="Preview", use_container_width=True)
 
-    manual_category = st.selectbox("Select category", ["auto", "food", "cosmetics", "electronics", "medicines"])
-
     if st.button("Check Compliance"):
         st.session_state.count += 1
 
-        client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
-        image_bytes = uploaded.getvalue()
+        try:
+            client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+            image_bytes = uploaded.getvalue()
+            mime_type = uploaded.type if getattr(uploaded, "type", None) else "image/jpeg"
 
-        prompt = """
-        Read the product label carefully.
-        Return ONLY plain text with all visible label text.
-        Do not explain.
-        """
+            response = client.models.generate_content(
+                model="gemini-3.7-flash",
+                contents=[
+                    "Extract all visible text from this product label. Return only plain text.",
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                ],
+            )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-            ]
-        )
+            extracted_text = response.text or ""
+            detected_category, scores = detect_category(extracted_text)
+            final_category = detected_category if mode == "auto" else mode
 
-        extracted_text = response.text or ""
-        detected_category, scores = detect_category(extracted_text)
+            required_fields = RULES["base"] + RULES[final_category]
+            present_fields, missing_fields = field_check(extracted_text, required_fields)
+            compliant = len(missing_fields) == 0
 
-        final_category = detected_category if manual_category == "auto" else manual_category
-        required = RULES["base"] + RULES[final_category]
+            st.subheader("Result")
+            st.write("Scanned products:", st.session_state.count)
+            st.write("Detected category:", detected_category)
+            st.write("Final category:", final_category)
+            st.write("Compliance:", "YES" if compliant else "NO")
+            st.write("Present fields:", present_fields)
+            st.write("Missing fields:", missing_fields)
+            st.text_area("Extracted text", extracted_text, height=250)
 
-        present = [f for f in required if field_present(extracted_text, [f])]
-        missing = [f for f in required if f not in present]
-        compliant = len(missing) == 0
+            st.session_state.history.append({
+                "category": final_category,
+                "compliant": compliant,
+                "missing": missing_fields,
+                "text": extracted_text[:200]
+            })
 
-        result = {
-            "category": final_category,
-            "detected_text": extracted_text,
-            "present_fields": present,
-            "missing_fields": missing,
-            "compliant": compliant
-        }
-
-        st.subheader("Result")
-        st.write("Scanned products:", st.session_state.count)
-        st.write("Detected category:", final_category)
-        st.write("Compliance:", "YES" if compliant else "NO")
-        st.write("Present fields:", present)
-        st.write("Missing fields:", missing)
-        st.text_area("Extracted text", extracted_text, height=250)
-
-        st.session_state.history.append(result)
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")
 
     st.subheader("Scan History")
     for i, item in enumerate(reversed(st.session_state.history), start=1):
         st.write(f"{i}. {item['category']} - {'YES' if item['compliant'] else 'NO'}")
+        if item["missing"]:
+            st.write("Missing:", ", ".join(item["missing"]))
