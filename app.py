@@ -97,17 +97,29 @@ if active_image is not None:
   with col_img2:
     with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
-        img = Image.open(active_image)
-        # Image Preprocessing for better OCR
-        img_np = np.array(img)
-        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-        resized = cv2.resize(
-            gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC
-        )
-        extracted_text = pytesseract.image_to_string(resized)
-      except Exception as e:
-        extracted_text = ""
+      img = Image.open(active_image)
+      img_np = np.array(img)
 
+      # 1. Check if image is too dark or finger blocked lens
+      gray_check = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+      avg_brightness = np.mean(gray_check)
+
+      if avg_brightness < 25:
+        st.error(
+            "⚠️ **Invalid Image Detected!** Camera seems to be blocked (Finger"
+            " on lens) or extremely dark. Please capture a clear product"
+            " label."
+        )
+        st.stop()
+
+      # Image Preprocessing for better OCR
+      gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+      resized = cv2.resize(
+          gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC
+      )
+      extracted_text = pytesseract.image_to_string(resized)
+    except Exception as e:
+      extracted_text = ""
     with st.expander("📄 View Scanned Text & Extracted Data"):
       st.write(
           extracted_text
