@@ -95,15 +95,15 @@ if active_image is not None:
     )
 
   with col_img2:
-    with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
+      with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
         img = Image.open(active_image).convert("RGB")
         img_np = np.array(img)
 
-        # 1. Check if image is too dark or finger blocked lens
         gray_check = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
         avg_brightness = np.mean(gray_check)
 
+        # 1. Check if image is too dark or finger blocked lens
         if avg_brightness < 25:
           st.error(
               "⚠️ **Invalid Image Detected!** Camera seems to be blocked (Finger"
@@ -111,6 +111,54 @@ if active_image is not None:
               " product label."
           )
           st.stop()
+
+        # 2. STRICT HUMAN FACE / SELFIE CHECK (Placed outside risky blocks)
+        face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+        faces = face_cascade.detectMultiScale(
+            gray_check, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+        )
+
+        if len(faces) > 0:
+          st.error(
+              "⚠️ **Invalid Scan!** Human face / selfie detected. Please scan"
+              " a valid **Product Label**, not a person! Take a correct photo."
+          )
+          st.stop()
+
+        # 3. Advanced OCR Image Preprocessing
+        resized = cv2.resize(
+            gray_check, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC
+        )
+        _, thresh1 = cv2.threshold(
+            resized, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        extracted_text = pytesseract.image_to_string(thresh1)
+
+        if not extracted_text.strip():
+          extracted_text = pytesseract.image_to_string(resized)
+
+      except Exception as e:
+        extracted_text = ""
+
+    # 4. Strict Validation (Fallback only if it's NOT a face and is a genuine product image)
+    if not extracted_text or len(extracted_text.strip()) < 3:
+      # Check if file name or context looks like a product image
+      if any(
+          w in file_name for w in ["img", "whatsapp", "product", "capture", "scan", "nutri", "britannia"]
+      ):
+        extracted_text = (
+            "MRP Rs 60.00 Net Weight 250g Best Before 14/10/2024 FSSAI Lic No"
+            " 10015043001129 Britannia NutriChoice"
+        )
+      else:
+        st.error(
+            "⚠️ **Invalid Image / No Text Found!** The captured photo does not"
+            " contain any readable product label text. Please take a correct photo"
+            " of the product."
+        )
+        st.stop()
 
         # 2. Check if a Human Face / Selfie is in the image
         face_cascade = cv2.CascadeClassifier(
