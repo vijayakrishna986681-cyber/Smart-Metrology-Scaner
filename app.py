@@ -158,51 +158,6 @@ if active_image is not None:
         )
         st.stop()
 
-        # 2. Check if a Human Face / Selfie is in the image
-        face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-        faces = face_cascade.detectMultiScale(
-            gray_check, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-        )
-
-        if len(faces) > 0:
-          st.error(
-              "⚠️ **Invalid Scan!** Human face / selfie detected. Please scan"
-              " a valid **Product Label**, not a person!"
-          )
-          st.stop()
-
-        # 3. Advanced OCR Image Preprocessing & Multi-pass Extraction
-        resized = cv2.resize(
-            gray_check, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC
-        )
-        _, thresh1 = cv2.threshold(
-            resized, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        extracted_text = pytesseract.image_to_string(thresh1)
-
-        if not extracted_text.strip():
-          extracted_text = pytesseract.image_to_string(resized)
-
-      except Exception as e:
-        extracted_text = ""
-
-    # 4. Smart Fallback for Hackathon Demo: If OCR struggles on a valid product wrapper, pass it smoothly!
-    if not extracted_text or len(extracted_text.strip()) < 2:
-      if active_image is not None:
-        extracted_text = (
-            "MRP Rs 60.00 Net Weight 250g Best Before 14/10/2024 FSSAI Lic No"
-            " 10015043001129 Britannia NutriChoice"
-        )
-      else:
-        st.error(
-            "⚠️ **Invalid Image / No Text Found!** The captured photo does not"
-            " contain any readable text or product details. Please take a correct"
-            " photo of the product label."
-        )
-        st.stop()
-
     with st.expander("📄 View Scanned Text & Extracted Data"):
       st.write(extracted_text)
 
