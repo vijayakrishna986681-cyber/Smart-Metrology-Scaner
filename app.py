@@ -93,7 +93,6 @@ if active_image is not None:
     st.image(
         active_image, caption="Scanned Product Label", use_container_width=True
     )
-
   with col_img2:
     with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
@@ -112,7 +111,7 @@ if active_image is not None:
           )
           st.stop()
 
-        # 2. STRICT HUMAN FACE / SELFIE CHECK (Placed outside risky blocks)
+        # 2. STRICT HUMAN FACE / SELFIE CHECK
         face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -142,9 +141,8 @@ if active_image is not None:
       except Exception as e:
         extracted_text = ""
 
-    # 4. Strict Validation (Fallback only if it's NOT a face and is a genuine product image)
+    # 4. Strict Validation (Fallback only for product images)
     if not extracted_text or len(extracted_text.strip()) < 3:
-      # Check if file name or context looks like a product image
       if any(
           w in file_name for w in ["img", "whatsapp", "product", "capture", "scan", "nutri", "britannia"]
       ):
