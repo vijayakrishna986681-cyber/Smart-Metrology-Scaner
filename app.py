@@ -1,105 +1,98 @@
-from datetime import datetime
-import os
+import streamlit as st
+from PIL import Image
 from google import genai
 from google.genai import types
-import numpy as np
-import pandas as pd
-from PIL import Image
-import streamlit as st
-from streamlit_mic_recorder import mic_recorder
+import json
+import re
 
-st.set_page_config(
-    page_title="AI Smart Legal Metrology Scanner", page_icon="⚖️", layout="wide"
-)
+st.set_page_config(page_title="Smart Legal Metrology Checker", layout="centered")
 
-st.title("⚖️ AI Smart Legal Metrology Scanner & Voice Assistant")
-st.markdown(
-    "Automated compliance verification for packaged commodities under Legal Metrology Rules."
-)
+RULES = {
+    "base": ["product name", "manufacturer", "net quantity", "mfg date or import date", "mrp"],
+    "food": ["ingredients", "best before"],
+    "cosmetics": ["batch no", "expiry date"],
+    "electronics": ["model number", "manufacturer details"],
+    "medicines": ["batch no", "expiry date", "license no"]
+}
 
-# Sidebar for API Key and Settings
-st.sidebar.header("AI & Voice Panel")
-api_key = st.sidebar.text_input(
-    "Enter Gemini API Key:", type="password", help="Enter your Google Gemini API Key"
-)
+def detect_category(text):
+    t = text.lower()
+    scores = {
+        "food": sum(k in t for k in ["ingredients", "nutrition", "sugar", "salt", "packaged food"]),
+        "cosmetics": sum(k in t for k in ["cream", "lotion", "shampoo", "soap", "cosmetic"]),
+        "electronics": sum(k in t for k in ["voltage", "warranty", "model", "charger", "electronics"]),
+        "medicines": sum(k in t for k in ["tablet", "capsule", "syrup", "dosage", "medicine"])
+    }
+    return max(scores, key=scores.get), scores
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Voice Assistant")
-st.sidebar.write(
-    "Ask questions about Legal Metrology rules or product compliance:"
-)
+def field_present(text, keywords):
+    t = text.lower()
+    return any(k in t for k in keywords)
 
-audio_info = mic_recorder(
-    start_prompt="Start Recording",
-    stop_prompt="Stop Recording",
-    just_once=False,
-    key="mic_recorder",
-)
-
-# Main Application Layout
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.subheader("Product Input")
-    input_method = st.radio(
-        "Select Input Method", ("Upload Label Image", "Live Camera Feed")
-    )
-
-    image = None
-    if input_method == "Upload Label Image":
-        uploaded_file = st.file_uploader(
-            "Or Upload Product Label Image...", type=["jpg", "jpeg", "png"]
-        )
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.image(
-                image, caption="Scanned Product Label", use_container_width=True
-            )
-    else:
-        st.write("Camera is active below:")
-        camera_image = st.camera_input("Capture Product Label")
-        if camera_image is not None:
-            image = Image.open(camera_image)
-
-with col2:
-    st.subheader("Compliance Analysis Report")
-    
-    if st.button("Run Compliance Check", type="primary"):
-        if not api_key:
-            st.error("Please enter your Gemini API Key in the sidebar.")
-        elif image is None:
-            st.error("Please provide a product label image via upload or camera.")
-        else:
-            try:
-                client = genai.Client(api_key=api_key)
-                
-                with st.spinner("Analyzing product label against Legal Metrology rules using Gemini..."):
-                    prompt = """
-                    You are an expert Legal Metrology Inspector. Analyze this product label image carefully and check compliance with the Legal Metrology (Packaged Commodities) Rules.
-                    
-                    Provide a structured report containing:
-                    1. Product Name & Category
-                    2. Mandatory Declarations Found (e.g., Generic Name, Net Quantity, Manufacturer Details, MRP, Month/Year of Packing, Consumer Care details).
-                    3. Compliance Status (Pass/Fail) with specific observations for each declaration.
-                    4. Any violations or missing declarations found.
-                    """
-                    
-                    # Using strictly the latest recommended model gemini-3.6-flash
-                    response = client.models.generate_content(
-                        model='gemini-3.6-flash',
-                        contents=[image, prompt]
-                    )
-                    
-                    st.success("Analysis Complete!")
-                    st.markdown(response.text)
-                    
-            except Exception as e:
-                st.error(f"Error communicating with Gemini AI: {e}")
-
-# Live Scan History Section
-st.markdown("---")
-st.subheader("📋 Live Scan History")
+if "count" not in st.session_state:
+    st.session_state.count = 0
 if "history" not in st.session_state:
     st.session_state.history = []
 
-st.info("Scanned compliance reports will be logged here during your session.")
+st.title("Smart Legal Metrology Checker")
+st.caption("Capture product label and check mandatory declarations")
+
+uploaded = st.camera_input("Take product photo") or st.file_uploader("Upload product image", type=["jpg", "jpeg", "png"])
+
+if uploaded:
+    img = Image.open(uploaded)
+    st.image(img, caption="Preview", use_container_width=True)
+
+    manual_category = st.selectbox("Select category", ["auto", "food", "cosmetics", "electronics", "medicines"])
+
+    if st.button("Check Compliance"):
+        st.session_state.count += 1
+
+        client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+        image_bytes = uploaded.getvalue()
+
+        prompt = """
+        Read the product label carefully.
+        Return ONLY plain text with all visible label text.
+        Do not explain.
+        """
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+            ]
+        )
+
+        extracted_text = response.text or ""
+        detected_category, scores = detect_category(extracted_text)
+
+        final_category = detected_category if manual_category == "auto" else manual_category
+        required = RULES["base"] + RULES[final_category]
+
+        present = [f for f in required if field_present(extracted_text, [f])]
+        missing = [f for f in required if f not in present]
+        compliant = len(missing) == 0
+
+        result = {
+            "category": final_category,
+            "detected_text": extracted_text,
+            "present_fields": present,
+            "missing_fields": missing,
+            "compliant": compliant
+        }
+
+        st.subheader("Result")
+        st.write("Scanned products:", st.session_state.count)
+        st.write("Detected category:", final_category)
+        st.write("Compliance:", "YES" if compliant else "NO")
+        st.write("Present fields:", present)
+        st.write("Missing fields:", missing)
+        st.text_area("Extracted text", extracted_text, height=250)
+
+        st.session_state.history.append(result)
+
+    st.subheader("Scan History")
+    for i, item in enumerate(reversed(st.session_state.history), start=1):
+        st.write(f"{i}. {item['category']} - {'YES' if item['compliant'] else 'NO'}")
