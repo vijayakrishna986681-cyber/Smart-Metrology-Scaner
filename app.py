@@ -1,6 +1,8 @@
 from datetime import datetime
-from PIL import Image
+import cv2
+import numpy as np
 import pandas as pd
+from PIL import Image
 import pytesseract
 import streamlit as st
 from streamlit_mic_recorder import mic_recorder  # వాయిస్ రికార్డర్ కోసం
@@ -48,20 +50,16 @@ demo_category_override = st.sidebar.selectbox(
     "Or Select Product Type Manually:",
     [
         "Live Camera Scan / Auto-Detect",
+        "Cosmetics / Personal Care",
         "Electronics / Gadgets (Mobiles, Buds)",
         "Food & Bakery Item",
         "Textiles / Garments (Shirts)",
         "Medicine / Pharmaceutical",
-        "Cosmetics / Personal Care",
     ],
 )
 
-# If voice command captured something (simulated or text mapping)
-voice_text = ""
 if audio_data:
   st.sidebar.success("audio captured successfully!")
-  # Note: Real audio-to-text transcription needs OpenAI Whisper or SpeechRecognition API.
-  # For hackathon demo, we can map voice trigger or show success.
 
 st.markdown("---")
 
@@ -89,18 +87,26 @@ else:
   )
   active_image = uploaded_file
 
+
+def contains_any(text, keywords):
+  return any(k.lower() in text for k in keywords)
+
+
 if active_image is not None:
   file_name = getattr(active_image, "name", "captured_product.jpg").lower()
 
   col_img1, col_img2 = st.columns([1, 2])
   with col_img1:
-    st.image(active_image, caption="Scanned Product Label", use_container_width=True)
+    st.image(active_image, caption="Scanned Product Label", width='stretch')
 
+  extracted_text = ""
   with col_img2:
     with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
-        img = Image.open(active_image)
-        extracted_text = pytesseract.image_to_string(img)
+        img = Image.open(active_image).convert("RGB")
+        img_np = np.array(img)
+        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        extracted_text = pytesseract.image_to_string(gray)
       except Exception as e:
         extracted_text = ""
 
@@ -113,11 +119,33 @@ if active_image is not None:
 
     text_lower = extracted_text.lower()
     detected_category = demo_category_override
+
     if detected_category == "Live Camera Scan / Auto-Detect":
-      detected_category = "Food & Bakery Item"
-      if any(
-          w in file_name
-          for w in [
+      # 1. Cosmetics Check First (to prevent face creams from going to medicine)
+      if contains_any(
+          file_name,
+          ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"],
+      ) or contains_any(
+          text_lower,
+          [
+              "face cream",
+              "glowderma",
+              "net quantity",
+              "mfg. date",
+              "use before",
+              "cosmetics",
+              "ingredients:",
+              "aqua",
+              "glycerin",
+              "bright glow",
+          ],
+      ):
+        detected_category = "Cosmetics / Personal Care"
+
+      # 2. Electronics Check
+      elif contains_any(
+          file_name,
+          [
               "buds",
               "realme",
               "t300",
@@ -127,22 +155,35 @@ if active_image is not None:
               "phone",
               "charger",
               "electronic",
-          ]
-      ) or any(
-          k in text_lower
-          for k in ["buds", "audio", "bluetooth", "model", "input", "origin"]
+          ],
+      ) or contains_any(
+          text_lower,
+          ["realme", "buds", "t300", "bluetooth", "model", "input", "origin"],
       ):
         detected_category = "Electronics / Gadgets (Mobiles, Buds)"
-      elif any(
-          w in file_name for w in ["shirt", "cloth", "garment", "textile"]
-      ) or "size" in text_lower:
+
+      # 3. Food Check
+      elif contains_any(
+          file_name, ["nutri", "britannia", "food", "biscuit", "snack"]
+      ) or contains_any(text_lower, ["fssai", "best before", "bakery"]):
+        detected_category = "Food & Bakery Item"
+
+      # 4. Textiles Check
+      elif contains_any(
+          file_name, ["shirt", "cloth", "garment", "textile", "pant"]
+      ) or contains_any(text_lower, ["size", "dimensions", "wash care"]):
         detected_category = "Textiles / Garments (Shirts)"
-      elif any(w in file_name for w in ["med", "tablet", "capsule", "syrup"]) or "batch" in text_lower:
-        detected_category = "Medicine / Pharmaceutical"
-      elif any(
-          w in file_name
-          for w in ["soap", "cream", "shampoo", "paste", "lotion"]
+
+      # 5. Medicine Check
+      elif contains_any(
+          file_name, ["med", "tablet", "capsule", "syrup", "pharma"]
+      ) or contains_any(
+          text_lower,
+          ["batch no", "b.no", "mfg.dt", "exp.dt", "capsules", "tablets"],
       ):
+        detected_category = "Medicine / Pharmaceutical"
+
+      else:
         detected_category = "Cosmetics / Personal Care"
 
     st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
@@ -154,145 +195,197 @@ if active_image is not None:
 
   c1, c2, c3, c4 = st.columns(4)
 
-  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+  mrp_status = "N/A"
+  qty_status = "N/A"
+  extra_rule1 = "N/A"
+  extra_rule2 = "N/A"
+
+  if detected_category == "Cosmetics / Personal Care":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹", "price"]) else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net quantity" in text_lower or "1 n" in text_lower or "qty" in text_lower)
+        if contains_any(text_lower, ["net quantity", "g", "ml", "qty"])
+        else "❌ FAIL (Net Quantity Missing)"
+    )
+    extra_rule1 = (
+        "✅ PASS"
+        if contains_any(text_lower, ["mfg", "mfg. date", "manufacturing"])
+        else "❌ FAIL (Mfg Date Missing)"
+    )
+    extra_rule2 = (
+        "✅ PASS"
+        if contains_any(
+            text_lower,
+            ["marketed by", "manufactured by", "care", "use before"],
+        )
+        else "❌ FAIL (Maker Details Missing)"
+    )
+
+    with c1:
+      st.metric("MRP Declaration", mrp_status)
+    with c2:
+      st.metric("Net Quantity", qty_status)
+    with c3:
+      st.metric("Manufacturing Date", extra_rule1)
+    with c4:
+      st.metric("Manufacturer Details", extra_rule2)
+
+  elif detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+    mrp_status = (
+        "✅ PASS"
+        if contains_any(text_lower, ["mrp", "rs", "₹", "price", "12v", "5v"])
+        else "❌ FAIL"
+    )
+    qty_status = (
+        "✅ PASS"
+        if contains_any(text_lower, ["net quantity", "1 n", "qty", "units"])
         else "❌ FAIL (Net Qty/Units Missing)"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("country of origin" in text_lower or "origin" in text_lower)
+        if contains_any(
+            text_lower,
+            [
+                "country of origin",
+                "origin",
+                "imported by",
+                "manufactured",
+                "made in",
+            ],
+        )
         else "❌ FAIL (Country of Origin Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("importer" in text_lower or "manufacturer" in text_lower or "customer care" in text_lower)
+        if contains_any(
+            text_lower,
+            ["importer", "manufacturer", "customer care", "packer"],
+        )
         else "❌ FAIL (Importer/Maker/Customer Care Missing)"
     )
 
     with c1:
-      st.metric(label="MRP Declaration", value=mrp_status)
+      st.metric("MRP Declaration", mrp_status)
     with c2:
-      st.metric(label="Net Quantity / Units", value=qty_status)
+      st.metric("Net Quantity / Units", qty_status)
     with c3:
-      st.metric(label="Country of Origin", value=extra_rule1)
+      st.metric("Country of Origin", extra_rule1)
     with c4:
-      st.metric(label="Importer & Customer Care", value=extra_rule2)
+      st.metric("Importer & Customer Care", extra_rule2)
 
   elif detected_category == "Food & Bakery Item":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹", "price"]) else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net" in text_lower or "g" in text_lower or "kg" in text_lower)
+        if contains_any(text_lower, ["net", "g", "kg", "ml", "qty"])
         else "❌ FAIL"
     )
     extra_rule1 = (
         "✅ PASS"
-        if (
-            "expiry" in text_lower
-            or "best before" in text_lower
-            or "use by" in text_lower
-            or "mfg" in text_lower
+        if contains_any(
+            text_lower, ["expiry", "best before", "use by", "mfg", "pkd"]
         )
         else "❌ FAIL (Expiry Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("fssai" in text_lower or "ingredients" in text_lower)
+        if contains_any(text_lower, ["fssai", "ingredients", "lic"])
         else "❌ FAIL (FSSAI/Ingredients Missing)"
     )
 
     with c1:
-      st.metric(label="MRP Declaration", value=mrp_status)
+      st.metric("MRP Declaration", mrp_status)
     with c2:
-      st.metric(label="Net Quantity", value=qty_status)
+      st.metric("Net Quantity", qty_status)
     with c3:
-      st.metric(label="Expiry / Best Before", value=extra_rule1)
+      st.metric("Expiry / Best Before", extra_rule1)
     with c4:
-      st.metric(label="FSSAI & Ingredients", value=extra_rule2)
+      st.metric("FSSAI & Ingredients", extra_rule2)
 
   elif detected_category == "Textiles / Garments (Shirts)":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "price" in text_lower) else "❌ FAIL"
+        "✅ PASS" if contains_any(text_lower, ["mrp", "price", "rs", "₹"]) else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("size" in text_lower or "dimensions" in text_lower)
+        if contains_any(text_lower, ["size", "dimensions", "cm", "inch"])
         else "❌ FAIL (Size Missing)"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("month" in text_lower or "year" in text_lower or "mfg" in text_lower)
+        if contains_any(text_lower, ["month", "year", "mfg", "pkd"])
         else "❌ FAIL (Mfg Date Missing)"
     )
     extra_rule2 = (
         "✅ PASS"
-        if ("packer" in text_lower or "manufacturer" in text_lower)
+        if contains_any(text_lower, ["packer", "manufacturer", "marketed"])
         else "❌ FAIL (Maker Details Missing)"
     )
 
     with c1:
-      st.metric(label="MRP Declaration", value=mrp_status)
+      st.metric("MRP Declaration", mrp_status)
     with c2:
-      st.metric(label="Size & Dimensions", value=qty_status)
+      st.metric("Size & Dimensions", qty_status)
     with c3:
-      st.metric(label="Month & Year of Mfg", value=extra_rule1)
+      st.metric("Month & Year of Mfg", extra_rule1)
     with c4:
-      st.metric(label="Packer Details", value=extra_rule2)
+      st.metric("Packer Details", extra_rule2)
 
   elif detected_category == "Medicine / Pharmaceutical":
     mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
-    )
-    qty_status = (
-        "✅ PASS" if ("batch" in text_lower or "b-" in text_lower) else "❌ FAIL (Batch No Missing)"
-    )
-    extra_rule1 = (
-        "✅ PASS" if ("mfg" in text_lower or "manufacturing" in text_lower) else "❌ FAIL (Mfg Date Missing)"
-    )
-    extra_rule2 = (
-        "✅ PASS" if ("expiry" in text_lower or "exp" in text_lower) else "❌ FAIL (Expiry Date Missing)"
-    )
-
-    with c1:
-      st.metric(label="MRP Declaration", value=mrp_status)
-    with c2:
-      st.metric(label="Batch Number", value=qty_status)
-    with c3:
-      st.metric(label="Manufacturing Date", value=extra_rule1)
-    with c4:
-      st.metric(label="Expiry Date (Mandatory)", value=extra_rule2)
-
-  else:
-    mrp_status = (
-        "✅ PASS" if ("mrp" in text_lower or "rs" in text_lower) else "❌ FAIL"
+        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹"]) else "❌ FAIL"
     )
     qty_status = (
         "✅ PASS"
-        if ("net" in text_lower or "ml" in text_lower or "weight" in text_lower)
+        if contains_any(text_lower, ["batch", "b-", "b.no"])
+        else "❌ FAIL (Batch No Missing)"
+    )
+    extra_rule1 = (
+        "✅ PASS"
+        if contains_any(text_lower, ["mfg", "manufacturing"])
+        else "❌ FAIL (Mfg Date Missing)"
+    )
+    extra_rule2 = (
+        "✅ PASS"
+        if contains_any(text_lower, ["expiry", "exp", "use before"])
+        else "❌ FAIL (Expiry Date Missing)"
+    )
+
+    with c1:
+      st.metric("MRP Declaration", mrp_status)
+    with c2:
+      st.metric("Batch Number", qty_status)
+    with c3:
+      st.metric("Manufacturing Date", extra_rule1)
+    with c4:
+      st.metric("Expiry Date (Mandatory)", extra_rule2)
+
+  else:
+    mrp_status = (
+        "✅ PASS" if contains_any(text_lower, ["mrp", "rs", "₹"]) else "❌ FAIL"
+    )
+    qty_status = (
+        "✅ PASS"
+        if contains_any(text_lower, ["net", "ml", "weight", "g"])
         else "❌ FAIL"
     )
     extra_rule1 = (
         "✅ PASS"
-        if ("packer" in text_lower
-            or "manufacturer" in text_lower
-            or "mfg" in text_lower)
+        if contains_any(text_lower, ["packer", "manufacturer", "mfg", "marketed"])
         else "❌ FAIL (Maker Details Missing)"
     )
 
     c_gen1, c_gen2, c_gen3 = st.columns(3)
     with c_gen1:
-      st.metric(label="MRP Declaration", value=mrp_status)
+      st.metric("MRP Declaration", mrp_status)
     with c_gen2:
-      st.metric(label="Net Quantity / Content", value=qty_status)
+      st.metric("Net Quantity / Content", qty_status)
     with c_gen3:
-      st.metric(label="Packer / Manufacturer", value=extra_rule1)
+      st.metric("Packer / Manufacturer", extra_rule1)
 
   scan_record = {
       "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -315,7 +408,7 @@ st.metric(label="📊 Total Products Scanned in Current Session", value=total_sc
 
 if total_scans > 0:
   df_history = pd.DataFrame(st.session_state["history"])
-  st.dataframe(df_history, use_container_width=True)
+  st.dataframe(df_history, width='stretch')
 else:
   st.info(
       "No scans recorded yet. Use the camera scanner above to start scanning"
