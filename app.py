@@ -36,11 +36,6 @@ audio_info = mic_recorder(
     key="mic_recorder",
 )
 
-voice_query = ""
-if audio_info and "bytes" in audio_info:
-    st.sidebar.audio(audio_info["bytes"])
-    voice_query = "User asked a voice query regarding legal metrology compliance."
-
 # Main Application Layout
 col1, col2 = st.columns([1, 1])
 
@@ -61,7 +56,7 @@ with col1:
                 image, caption="Scanned Product Label", use_container_width=True
             )
     else:
-        st.write("Camera is currently turned off. Select 'Turn On Camera' above to start scanning.")
+        st.write("Camera is active below:")
         camera_image = st.camera_input("Capture Product Label")
         if camera_image is not None:
             image = Image.open(camera_image)
@@ -76,7 +71,7 @@ with col2:
             st.error("Please provide a product label image via upload or camera.")
         else:
             try:
-                # Initialize Gemini Client using the latest recommended model
+                # Initialize Gemini Client
                 client = genai.Client(api_key=api_key)
                 
                 with st.spinner("Analyzing product label against Legal Metrology rules using Gemini..."):
@@ -90,7 +85,7 @@ with col2:
                     4. Any violations or missing declarations found.
                     """
                     
-                    # Using the updated model requested by the system
+                    # Using the standard stable model for google-genai SDK
                     response = client.models.generate_content(
                         model='gemini-2.5-flash',
                         contents=[image, prompt]
@@ -100,11 +95,11 @@ with col2:
                     st.markdown(response.text)
                     
             except Exception as e:
-                # Fallback to alternative model if 2.5-flash encounters any issue
+                # Automatic fallback mechanism if primary model name needs adjustment
                 try:
                     client = genai.Client(api_key=api_key)
                     response = client.models.generate_content(
-                        model='gemini-2.0-flash-exp',
+                        model='gemini-flash',
                         contents=[image, prompt]
                     )
                     st.success("Analysis Complete!")
