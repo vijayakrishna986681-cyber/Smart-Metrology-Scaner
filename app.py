@@ -49,11 +49,11 @@ demo_category_override = st.sidebar.selectbox(
     "Or Select Product Type Manually:",
     [
         "Live Camera Scan / Auto-Detect",
+        "Cosmetics / Personal Care",
         "Electronics / Gadgets (Mobiles, Buds)",
         "Food & Bakery Item",
         "Textiles / Garments (Shirts)",
         "Medicine / Pharmaceutical",
-        "Cosmetics / Personal Care",
     ],
 )
 
@@ -102,7 +102,6 @@ if active_image is not None:
         gray_check = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
         avg_brightness = np.mean(gray_check)
 
-        # 1. Check if image is too dark or finger blocked lens
         if avg_brightness < 25:
           st.error(
               "⚠️ **Invalid Image Detected!** Camera seems to be blocked (Finger"
@@ -111,7 +110,6 @@ if active_image is not None:
           )
           st.stop()
 
-        # 2. STRICT HUMAN FACE / SELFIE CHECK
         face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
@@ -126,7 +124,6 @@ if active_image is not None:
           )
           st.stop()
 
-        # 3. Advanced OCR Image Preprocessing
         resized = cv2.resize(
             gray_check, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC
         )
@@ -141,7 +138,6 @@ if active_image is not None:
       except Exception as e:
         extracted_text = ""
 
-    # 4. Strict Validation (Fallback only for product images)
     if not extracted_text or len(extracted_text.strip()) < 3:
       if any(
           w in file_name for w in ["img", "whatsapp", "product", "capture", "scan", "nutri", "britannia"]
@@ -165,7 +161,7 @@ if active_image is not None:
     detected_category = demo_category_override
 
     if detected_category == "Live Camera Scan / Auto-Detect":
-      # 1. Cosmetics / Personal Care Check (Priority check for creams, soaps, face cream)
+      # 1. Cosmetics / Personal Care Check
       if any(
           w in file_name
           for w in ["soap", "cream", "shampoo", "paste", "lotion", "oil", "face"]
@@ -230,7 +226,7 @@ if active_image is not None:
       ):
         detected_category = "Textiles / Garments (Shirts)"
 
-      # 5. Food & Bakery Item Check (Strict check so it won't take everything)
+      # 5. Food & Bakery Item Check
       elif any(
           w in file_name for w in ["nutri", "britannia", "food", "biscuit", "snack"]
       ) or any(
@@ -241,6 +237,7 @@ if active_image is not None:
       # 6. Final General Fallback
       else:
         detected_category = "Cosmetics / Personal Care"
+
     st.markdown(f"### 🏷️ Detected Category: `{detected_category}`")
 
   st.markdown("---")
@@ -250,7 +247,40 @@ if active_image is not None:
 
   c1, c2, c3, c4 = st.columns(4)
 
-  if detected_category == "Electronics / Gadgets (Mobiles, Buds)":
+  if detected_category == "Cosmetics / Personal Care":
+    mrp_status = (
+        "✅ PASS"
+        if any(k in text_lower for k in ["mrp", "rs", "₹", "price"])
+        else "❌ FAIL"
+    )
+    qty_status = (
+        "✅ PASS"
+        if any(k in text_lower for k in ["net quantity", "g", "ml", "qty"])
+        else "❌ FAIL (Net Quantity Missing)"
+    )
+    extra_rule1 = (
+        "✅ PASS"
+        if any(k in text_lower for k in ["mfg", "mfg. date", "manufacturing"])
+        else "❌ FAIL (Mfg Date Missing)"
+    )
+    extra_rule2 = (
+        "✅ PASS"
+        if any(
+            k in text_lower for k in ["marketed by", "manufactured by", "care"]
+        )
+        else "❌ FAIL (Maker Details Missing)"
+    )
+
+    with c1:
+      st.metric(label="MRP Declaration", value=mrp_status)
+    with c2:
+      st.metric(label="Net Quantity", value=qty_status)
+    with c3:
+      st.metric(label="Manufacturing Date", value=extra_rule1)
+    with c4:
+      st.metric(label="Manufacturer Details", value=extra_rule2)
+
+  elif detected_category == "Electronics / Gadgets (Mobiles, Buds)":
     mrp_status = (
         "✅ PASS"
         if any(
