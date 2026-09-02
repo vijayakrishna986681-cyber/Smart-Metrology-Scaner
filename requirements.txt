@@ -1,7 +1,7 @@
 streamlit
-pytesseract
-opencv-python-headless
-numpy
+google-genai
+pillow
 pandas
-Pillow
-streamlit-mic_recorder
+numpy
+streamlit-mic-recorder
+opencv-python-headless
