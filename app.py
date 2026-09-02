@@ -95,9 +95,7 @@ if active_image is not None:
     )
 
   with col_img2:
-    with st.spinner(
-        "🔍 Analyzing Product & Validating Legal Metrology Rules..."
-    ):
+    with st.spinner("🔍 Analyzing Product & Validating Legal Metrology Rules..."):
       try:
         img = Image.open(active_image)
         img_np = np.array(img)
@@ -114,9 +112,9 @@ if active_image is not None:
           )
           st.stop()
 
-        # 2. Check if a Human Face is in the image (Selfies / People photos)
+        # 2. Check if a Human Face / Selfie is in the image
         face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
         faces = face_cascade.detectMultiScale(
             gray_check, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
@@ -124,26 +122,33 @@ if active_image is not None:
 
         if len(faces) > 0:
           st.error(
-              "⚠️ **Invalid Scan!** Human face detected. This app is designed"
-              " to scan **Product Labels** (Packaged Goods, Electronics, etc.)"
-              " for Legal Metrology compliance, not selfies or people!"
+              "⚠️ **Invalid Scan!** Human face detected. Please scan a valid"
+              " **Product Label**, not a person or selfie!"
           )
           st.stop()
 
         # Image Preprocessing for better OCR
-        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
         resized = cv2.resize(
-            gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC
+            gray_check,
+            None,
+            fx=2.0,
+            fy=2.0,
+            interpolation=cv2.INTER_CUBIC,
         )
         extracted_text = pytesseract.image_to_string(resized)
       except Exception as e:
         extracted_text = ""
-    with st.expander("📄 View Scanned Text & Extracted Data"):
-      st.write(
-          extracted_text
-          if extracted_text.strip()
-          else "No text found in image."
+
+    # 3. Check if text is completely missing (Blank or useless image)
+    if not extracted_text or len(extracted_text.strip()) < 3:
+      st.error(
+          "⚠️ **No Text Found!** The captured image does not contain readable"
+          " text or product details. Please upload a clear product label."
       )
+      st.stop()
+
+    with st.expander("📄 View Scanned Text & Extracted Data"):
+      st.write(extracted_text)
 
     text_lower = extracted_text.lower()
     detected_category = demo_category_override
