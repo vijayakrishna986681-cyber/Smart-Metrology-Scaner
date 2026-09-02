@@ -71,7 +71,7 @@ with col2:
             st.error("Please provide a product label image via upload or camera.")
         else:
             try:
-                # Initialize Gemini Client
+                # Initialize Gemini Client using official google-genai library
                 client = genai.Client(api_key=api_key)
                 
                 with st.spinner("Analyzing product label against Legal Metrology rules using Gemini..."):
@@ -85,7 +85,6 @@ with col2:
                     4. Any violations or missing declarations found.
                     """
                     
-                    # Using the standard stable model for google-genai SDK
                     response = client.models.generate_content(
                         model='gemini-2.5-flash',
                         contents=[image, prompt]
@@ -95,17 +94,7 @@ with col2:
                     st.markdown(response.text)
                     
             except Exception as e:
-                # Automatic fallback mechanism if primary model name needs adjustment
-                try:
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model='gemini-flash',
-                        contents=[image, prompt]
-                    )
-                    st.success("Analysis Complete!")
-                    st.markdown(response.text)
-                except Exception as ex:
-                    st.error(f"Error communicating with Gemini AI: {ex}")
+                st.error(f"Error communicating with Gemini AI: {e}")
 
 # Live Scan History Section
 st.markdown("---")
