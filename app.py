@@ -71,20 +71,10 @@ with col2:
             st.error("Please provide a product label image via upload or camera.")
         else:
             try:
+                # Initialize Gemini Client
                 client = genai.Client(api_key=api_key)
                 
-                with st.spinner("Finding available model and analyzing product label..."):
-                    # Automatically find an available model for this API key
-                    target_model = 'gemini-2.5-flash'
-                    try:
-                        models = client.models.list()
-                        for m in models:
-                            if 'flash' in m.name.lower():
-                                target_model = m.name
-                                break
-                    except Exception:
-                        pass
-                    
+                with st.spinner("Analyzing product label against Legal Metrology rules using Gemini..."):
                     prompt = """
                     You are an expert Legal Metrology Inspector. Analyze this product label image carefully and check compliance with the Legal Metrology (Packaged Commodities) Rules.
                     
@@ -95,12 +85,13 @@ with col2:
                     4. Any violations or missing declarations found.
                     """
                     
+                    # Updated to the exact model requested by the latest API error message
                     response = client.models.generate_content(
-                        model=target_model,
+                        model='gemini-3.6-flash',
                         contents=[image, prompt]
                     )
                     
-                    st.success(f"Analysis Complete! (Using model: {target_model})")
+                    st.success("Analysis Complete!")
                     st.markdown(response.text)
                     
             except Exception as e:
