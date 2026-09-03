@@ -6,21 +6,19 @@ import streamlit as st
 from PIL import Image
 from google import genai
 from google.genai import types
-from google.genai.errors import ClientError
 
 st.set_page_config(page_title="Smart Legal Metrology Checker", layout="centered")
 
 RULES = {
-    "base": ["product", "manufactured by", "marketed by", "quantity", "mrp"],
+    "base": ["product", "manufacturer", "marketed by", "quantity", "mrp"],
     "food": ["ingredients", "best before", "use by", "fssai"],
     "cosmetics": ["batch", "expiry", "manufacturing"],
-    "electronics": ["model", "warranty", "manufactured by", "voltage"],
+    "electronics": ["model", "warranty", "manufacturer", "voltage"],
     "medicines": ["batch", "expiry", "license", "dosage"]
 }
 
-# Sidebar for API Key configuration (Optional fallback if secrets are not set)
 st.sidebar.header("Configuration")
-api_key_input = st.sidebar.text_input("Enter Gemini API Key (Optional):", type="password", help="If left empty, app will use default multi-keys from secrets")
+api_key_input = st.sidebar.text_input("Enter Gemini API Key:", type="password", help="Enter your Google Gemini API Key")
 
 def detect_category(text: str):
     t = text.lower()
@@ -33,56 +31,28 @@ def detect_category(text: str):
     category = max(scores, key=scores.get)
     return category, scores
 
-def gemini_call_with_fallback(image_bytes, mime_type, manual_key):
-    """
-    ఒకటికి మించి API కీలను హ్యాండిల్ చేయడానికి మరియు 429 కోటా ఎర్రర్ వస్తే 
-    ఆటోమేటిక్‌గా వేరే కీకి మళ్లేలా రాసిన ఫాల్‌బ్యాక్ ఫంక్షన్.
-    """
-    # 1. యూజర్ మ్యాన్యువల్‌గా ఇస్తే అది ముందు తీసుకుంటుంది
-    api_keys_list = []
-    if manual_key:
-        api_keys_list.append(manual_key)
-    
-    # 2. స్ట్రీమ్‌లిట్ సీక్రెట్స్ నుండి మల్టీ కీలను యాడ్ చేయడం
-    try:
-        if "API_KEYS" in st.secrets:
-            for k in st.secrets["API_KEYS"]:
-                if k not in api_keys_list:
-                    api_keys_list.append(k)
-        elif "GOOGLE_API_KEY" in st.secrets:
-            if st.secrets["GOOGLE_API_KEY"] not in api_keys_list:
-                api_keys_list.append(st.secrets["GOOGLE_API_KEY"])
-    except Exception:
-        pass
-
-    if not api_keys_list:
-        raise Exception("దశలవారీగా ఉపయోగించడానికి ఎలాంటి API కీలు కనుగొనబడలేదు. దయచేసి secrets లేదా sidebar లో ఎంటర్ చేయండి.")
-
+def gemini_call_with_retry(client, image_bytes, mime_type, max_attempts=2):
     last_err = None
-    # 3. ప్రతి కీని లూప్ ద్వారా చెక్ చేస్తూ పోతుంది
-    for api_key in api_keys_list:
-        for attempt in range(2): # ప్రతి కీకి 2 ప్రయత్నాలు
+    # ప్రత్యామ్నాయంగా మోడల్ పేర్లను ప్రయత్నించడం (503 ఎర్రర్ రాకుండా)
+    models_to_try = ["gemini-2.5-flash", "gemini-3.6-flash"]
+    
+    for model_name in models_to_try:
+        for attempt in range(max_attempts):
             try:
-                client = genai.Client(api_key=api_key)
                 response = client.models.generate_content(
-                    model="gemini-3.6-flash",
+                    model=model_name,
                     contents=[
                         "Analyze this product label image thoroughly. Extract all visible text, declarations, MRP, net quantity, manufacturer details, and category-specific details accurately.",
                         types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                     ],
                 )
-                return response # సక్సెస్ అయితే రెస్పాన్స్ రిటర్న్ చేస్తుంది
+                if response and response.text:
+                    return response
             except Exception as e:
                 last_err = e
-                msg = str(e)
-                # కోటా లిమిట్ (429) లేదా సర్వర్ బిజీ ఉంటే తర్వాతి కీకి వెళ్తుంది
-                if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "503" in msg or "UNAVAILABLE" in msg:
-                    time.sleep(1)
-                    break # తర్వాతి కీకి స్విచ్ అవుతుంది
-                else:
-                    raise e # వేరే ఎర్రర్ వస్తే ఇక్కడే ఆగిపోతుంది
-
-    raise last_err
+                time.sleep(1)
+                
+    raise last_err if last_err else Exception("AI Model busy.")
 
 if "count" not in st.session_state:
     st.session_state.count = 0
@@ -104,57 +74,72 @@ if uploaded:
     st.image(img, caption="Preview", use_container_width=True)
 
     if st.button("Run Compliance Check", type="primary"):
-        st.session_state.count += 1
+        active_api_key = api_key_input
+        if not active_api_key:
+            try:
+                active_api_key = st.secrets["API_KEYS"][0]
+            except Exception:
+                try:
+                    active_api_key = st.secrets["GOOGLE_API_KEY"]
+                except Exception:
+                    pass
 
-        try:
-            image_bytes = uploaded.getvalue()
-            mime_type = uploaded.type if getattr(uploaded, "type", None) else "image/jpeg"
+        if not active_api_key:
+            st.error("Please enter your Gemini API Key in the sidebar or secrets.")
+        else:
+            st.session_state.count += 1
 
-            with st.spinner("Analyzing product label against Legal Metrology rules using Gemini 3.6 Flash..."):
-                # ఫాల్‌బ్యాక్ ఫంక్షన్‌ని కాల్ చేయడం
-                response = gemini_call_with_fallback(image_bytes, mime_type, api_key_input)
+            try:
+                client = genai.Client(api_key=active_api_key)
+                image_bytes = uploaded.getvalue()
+                mime_type = uploaded.type if getattr(uploaded, "type", None) else "image/jpeg"
 
-            extracted_text = response.text or ""
-            detected_category, scores = detect_category(extracted_text)
-            final_category = detected_category if mode == "auto" else mode
+                with st.spinner("Analyzing product label against Legal Metrology rules..."):
+                    response = gemini_call_with_retry(client, image_bytes, mime_type)
 
-            required_fields = RULES["base"] + RULES.get(final_category, [])
-            
-            present_fields = []
-            missing_fields = []
-            t_lower = extracted_text.lower()
-            for field in required_fields:
-                if field.lower() in t_lower:
-                    present_fields.append(field)
-                else:
-                    missing_fields.append(field)
+                extracted_text = response.text or ""
+                detected_category, scores = detect_category(extracted_text)
+                final_category = detected_category if mode == "auto" else mode
 
-            compliant = len(missing_fields) == 0
+                required_fields = RULES["base"] + RULES.get(final_category, [])
+                
+                present_fields = []
+                missing_fields = []
+                t_lower = extracted_text.lower()
+                for field in required_fields:
+                    if field.lower() in t_lower:
+                        present_fields.append(field)
+                    else:
+                        missing_fields.append(field)
 
-            st.subheader("Compliance Analysis Report")
-            st.metric("Total Scanned Products", st.session_state.count)
-            st.write("**Detected Category:**", detected_category.capitalize())
-            st.write("**Active Category Rule Set:**", final_category.capitalize())
-            st.markdown(f"**Compliance Status:** `{'PASS ✅' if compliant else 'FAIL ❌'}`")
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.success(f"Present Fields: {present_fields}")
-            with col_b:
-                st.error(f"Missing Fields: {missing_fields}")
+                compliant = len(missing_fields) == 0
 
-            with st.expander("View Extracted Text from Label"):
-                st.text_area("OCR / Extracted Details", extracted_text, height=200)
+                st.subheader("Compliance Analysis Report")
+                st.metric("Total Scanned Products", st.session_state.count)
+                st.write("**Detected Category:**", detected_category.capitalize())
+                st.write("**Active Category Rule Set:**", final_category.capitalize())
+                st.markdown(f"**Compliance Status:** `{'PASS ✅' if compliant else 'FAIL ❌'}`")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.success(f"Present Fields: {present_fields}")
+                with col_b:
+                    st.error(f"Missing Fields: {missing_fields}")
 
-            st.session_state.history.append({
-                "category": final_category,
-                "compliant": compliant,
-                "missing": missing_fields,
-                "text": extracted_text[:150]
-            })
+                with st.expander("View Extracted Text from Label"):
+                    st.text_area("OCR / Extracted Details", extracted_text, height=200)
 
-        except Exception as e:
-            st.error(f"Error during analysis: {e}")
+                st.session_state.history.append({
+                    "category": final_category,
+                    "compliant": compliant,
+                    "missing": missing_fields,
+                    "text": extracted_text[:150]
+                })
+
+            except Exception as e:
+                # ఒకవేళ సర్వర్ ఎర్రర్ వచ్చినా మేడమ్ ముందు యాప్ ఆగిపోకుండా ఉండే సేఫ్టీ మెసేజ్
+                st.warning("Server is experiencing high demand. Please click 'Run Compliance Check' again immediately!")
+                st.error(f"Technical details: {e}")
 
     st.markdown("---")
     st.subheader("📋 Live Scan History")
