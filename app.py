@@ -11,8 +11,8 @@ from google.genai.errors import ClientError
 st.set_page_config(page_title="Smart Legal Metrology Checker", layout="centered")
 
 RULES = {
-    "base": ["product", "manufacturer", "quantity", "mrp"],
-    "food": ["ingredients", "best before", "fssai"],
+    "base": ["product", "manufacturer", "marketed by", "quantity", "mrp"],
+    "food": ["ingredients", "best before", "use by", "fssai"],
     "cosmetics": ["batch", "expiry", "manufacturing"],
     "electronics": ["model", "warranty", "manufacturer", "voltage"],
     "medicines": ["batch", "expiry", "license", "dosage"]
