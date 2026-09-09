@@ -135,7 +135,7 @@ elif nav_choice == "Product Scanner & Rule Engine":
                     mime_type = image_data.type if getattr(image_data, "type", None) else "image/jpeg"
                     
                     # Safe Model Retry Mechanism (Using gemini-2.5-flash & gemini-1.5-flash)
-                    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+                    models_to_try = ["gemini-2.5-flash", "gemini-3.6-flash"]
                     response = None
                     last_err = None
                     
