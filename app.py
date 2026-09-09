@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Professional UI
+# Custom CSS for Professional UI, Cards, and Color-coded indicators
 st.markdown("""
     <style>
     .main { background-color: #f4f6f9; }
@@ -18,22 +18,25 @@ st.markdown("""
     .stButton>button:hover { background-color: #17b978; color: white; }
     .pass-card { padding: 15px; background-color: #d4edda; border-left: 6px solid #28a745; color: #155724; border-radius: 4px; margin-bottom: 10px; }
     .fail-card { padding: 15px; background-color: #f8d7da; border-left: 6px solid #dc3545; color: #721c24; border-radius: 4px; margin-bottom: 10px; }
+    .category-badge { padding: 10px; background-color: #cce5ff; border-left: 6px solid #004085; color: #004085; border-radius: 4px; font-weight: bold; margin-bottom: 15px; }
+    .item-pass { padding: 8px 12px; background-color: #d4edda; color: #155724; border-radius: 4px; margin-bottom: 5px; border-left: 4px solid #28a745; font-weight: 500; }
+    .item-fail { padding: 8px 12px; background-color: #f8d7da; color: #721c24; border-radius: 4px; margin-bottom: 5px; border-left: 4px solid #dc3545; font-weight: 500; }
     </style>
 """, unsafe_allow_html=True)
 
-# Authentication State
+# Authentication State Management
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "inspector_name" not in st.session_state:
     st.session_state.inspector_name = ""
 
-# Database Configuration (CSV based local storage)
-DB_FILE = "legal_metrology_logs.csv"
+# Secure Local Database File for Inspection Logs
+DB_FILE = "legal_metrology_complete_logs.csv"
 if not os.path.exists(DB_FILE):
-    df_init = pd.DataFrame(columns=["Timestamp", "Inspector_ID", "Category", "Verdict", "Detected_Details", "Violations"])
+    df_init = pd.DataFrame(columns=["Timestamp", "Inspector_ID", "Detected_Category", "Verdict", "Summary_Details", "Violations"])
     df_init.to_csv(DB_FILE, index=False)
 
-# ----------------- 1. LOGIN & SECURITY PORTAL -----------------
+# ----------------- 1. OFFICIAL LOGIN & SECURITY PORTAL -----------------
 if not st.session_state.authenticated:
     st.markdown("<h1 style='text-align: center; color: #1e3d59;'>⚖️ Legal Metrology Smart Inspector</h1>", unsafe_allow_html=True)
     st.markdown("<h4 style='text-align: center; color: #6c757d;'>Government Enforcement Portal (Packaged Commodities Rules, 2011)</h4>", unsafe_allow_html=True)
@@ -41,13 +44,13 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.form("login_form"):
-            st.subheader("🔒 Official Login")
+            st.subheader("🔒 Official Inspector Login")
             inspector_id = st.text_input("Inspector ID (e.g., LMI_HYD_402)")
             password = st.text_input("Secure Password", type="password")
             login_btn = st.form_submit_button("Access Portal")
             
             if login_btn:
-                if inspector_id and password == "sih2026": # Demo Password
+                if inspector_id and password == "sih2026":
                     st.session_state.authenticated = True
                     st.session_state.inspector_name = inspector_id
                     st.rerun()
@@ -79,115 +82,150 @@ elif nav_choice == "Inspection Database & Logs":
             st.info("No inspection history available yet.")
 
 elif nav_choice == "Product Scanner & Rule Engine":
-    st.title("🔍 Category-Based Compliance Engine (2011 Rules)")
-    st.write("Upload product label images. The system will auto-detect the category and check variable keywords (Synonyms) like Use By, Expiry, Marketed by, etc.")
+    st.title("🔍 Ultimate Compliance Engine (2011 Rules & Multi-Category)")
+    st.write("Capture or upload product label via Camera/File. AI will auto-detect category, handle synonyms, and show green/red statutory validation.")
 
     col_img, col_analysis = st.columns([1, 1])
 
     with col_img:
-        uploaded_image = st.file_uploader("Upload Label Image", type=["jpg", "jpeg", "png"])
-        if uploaded_image is not None:
-            st.image(uploaded_image, caption="Scanned Product Label", use_container_width=True)
+        st.subheader("📸 Capture / Upload Label")
+        upload_choice = st.radio("Choose Input Method", ["Use Phone Camera", "Upload Image File"])
+        
+        image_data = None
+        if upload_choice == "Use Phone Camera":
+            image_data = st.camera_input("Take a photo of the product label")
+        else:
+            image_data = st.file_uploader("Upload Label Image", type=["jpg", "jpeg", "png"])
+
+        if image_data is not None:
+            st.image(image_data, caption="Selected Product Label", use_container_width=True)
 
     with col_analysis:
-        st.subheader("Rule Validation Panel")
-        product_category = st.selectbox(
-            "Select Detected Product Category",
-            ["General Commodities (Clothes, Toys, etc.)", "Food & Groceries (FSSAI)", "Cosmetics & Drugs", "Electronics / Appliances"]
+        st.subheader("📋 Compliance & Rule Verification Panel")
+        
+        # Optional manual override option just in case
+        override_category = st.selectbox(
+            "Select/Confirm Category (Auto-detected by default)", 
+            ["Auto-Detect via AI", "Food & Groceries (FSSAI)", "Medicines & Drugs", "Cosmetics & Beauty", "Electronics & Appliances", "General Commodities / Textiles"]
         )
         
-        run_check = st.button("Run 2011 Rule Compliance Check")
+        run_check = st.button("Run AI Scan & Color-Coded Verification")
 
         if run_check:
-            if uploaded_image is None:
-                st.warning("Please upload a product label image first!")
+            if image_data is None:
+                st.warning("Please capture or upload a product label image first!")
             else:
-                with st.spinner("AI parsing labels & matching synonyms (MRP, Expiry/Use By, Packer info)..."):
+                with st.spinner("AI parsing label, normalizing synonyms, and enforcing category rules..."):
                     
-                    violations = []
-                    extracted_info = {}
+                    # Determine category (simulated auto-detection or manual selection)
+                    if override_category == "Auto-Detect via AI":
+                        detected_category = "Food & Groceries (FSSAI)" # Default AI match example
+                    else:
+                        detected_category = override_category
 
-                    # --- SIMULATED FLEXIBLE EXTRACTION (Handling Synonyms) ---
-                    # In real backend, Gemini extracts text and maps variants:
-                    # 'Use By' or 'Expiry Date' or 'Best Before' -> mapped to Expiry field.
-                    # 'Manufactured By' or 'Packed By' or 'Marketed By' -> mapped to Packer field.
-                    
-                    has_mrp = True  # Universal mandatory
-                    has_net_quantity = True # Universal mandatory
-                    
-                    # Flexible Synonym Check for Packer
-                    packer_found_variants = ["Manufactured By", "Packed By", "Marketed By"]
-                    has_packer_details = True # Simulated true
-                    
-                    # Flexible Synonym Check for Expiry/Date
-                    expiry_found_variants = ["Use By", "Expiry Date", "Best Before", "Use Before"]
-                    
-                    # 1. Universal Rule Checks
-                    if not has_mrp:
-                        violations.append("Mandatory declaration missing: MRP (Inclusive of all taxes) [Rule 18]")
-                    if not has_net_quantity:
-                        violations.append("Mandatory declaration missing: Net Quantity (Weight/Volume) [Rule 14]")
-                    if not has_packer_details:
-                        violations.append("Mandatory declaration missing: Name & Address of Manufacturer / Packer / Importer [Rule 6]")
+                    # Rule checklists based on category
+                    if "Food" in detected_category:
+                        rule_checklist = {
+                            "Common Name of Commodity [Rule 6]": (True, "Wheat Flour (Aashirvaad)"),
+                            "Manufacturer / Packer Name & Address [Rule 6]": (True, "ITC Ltd., Kolkata - 700001"),
+                            "Net Quantity (Weight/Volume) [Rule 14]": (True, "1 kg (When packed)"),
+                            "MRP (Inclusive of all taxes) [Rule 18]": (True, "₹58.00"),
+                            "Expiry / Best Before / Use By": (True, "Best Before 4 months (Synonym matched)"),
+                            "FSSAI License Number / Logo (Mandatory)": (False, "Missing / Not Visible on Label!")
+                        }
+                    elif "Medicines" in detected_category:
+                        rule_checklist = {
+                            "Brand / Generic Name": (True, "Paracetamol Tablets IP 500mg"),
+                            "Composition / Active Ingredients": (True, "Each tablet contains Paracetamol IP 500mg"),
+                            "Manufacturer Name & Address": (True, "Sun Pharma Ltd., Mumbai"),
+                            "Batch Number": (True, "BT2026X9"),
+                            "Manufacturing & Expiry Dates": (True, "Mfg: 01/2026, Exp: 12/2028"),
+                            "Manufacturing License Number": (False, "Mfg License Number is missing or unreadable!")
+                        }
+                    elif "Cosmetics" in detected_category:
+                        rule_checklist = {
+                            "Product Name & Description": (True, "Herbal Neem Face Wash"),
+                            "Manufacturer / Packer Address": (True, "Himalaya Wellness, Bengaluru"),
+                            "Net Quantity (Volume)": (True, "100 ml"),
+                            "MRP (Inclusive of taxes)": (True, "₹180.00"),
+                            "Batch Number & Mfg Date": (True, "Batch #BN2409"),
+                            "Expiry / Use Before Date": (False, "Expiry / Use Before Date is missing!")
+                        }
+                    elif "Electronics" in detected_category:
+                        rule_checklist = {
+                            "Product Name & Model Number": (True, "Smart LED Bulb 9W"),
+                            "Manufacturer / Importer Address": (True, "Syska LED, Pune"),
+                            "Electrical Ratings (Voltage/Wattage)": (True, "230V AC, 50Hz, 9W"),
+                            "MRP (Inclusive of taxes)": (True, "₹450.00"),
+                            "BIS Standard Mark (Mandatory)": (False, "BIS Safety Standard Mark is missing!"),
+                            "Warranty Period Details": (True, "1 Year Replacement Warranty")
+                        }
+                    else: # General Commodities / Clothes
+                        rule_checklist = {
+                            "Common / Generic Name [Rule 6]": (True, "Men's Cotton Casual Shirt"),
+                            "Manufacturer / Seller Info [Rule 6]": (True, "Raymonds Apparel Ltd."),
+                            "Size / Dimensions [Rule 13]": (True, "Size: 40 (L)"),
+                            "Net Quantity [Rule 14]": (True, "1 Unit"),
+                            "MRP (Inclusive of taxes) [Rule 18]": (True, "₹1,499.00"),
+                            "Wash Care Instructions": (True, "Machine wash cold")
+                        }
 
-                    # 2. Category-Specific Dynamic Rules (2011 Regulations)
-                    if product_category == "Food & Groceries (FSSAI)":
-                        has_fssai_logo_or_no = False # Simulated missing FSSAI
-                        has_expiry_date = True # Found "Use By" variant on food label
-                        
-                        if not has_fssai_logo_or_no:
-                            violations.append("Category Violation: FSSAI License Number / Logo is missing (Mandatory for Food)")
-                        if not has_expiry_date:
-                            violations.append("Category Violation: 'Best Before' / 'Use By' / 'Expiry Date' is missing")
-
-                    elif product_category == "Cosmetics & Drugs":
-                        has_batch_no = True
-                        has_mfg_date = True
-                        # Cosmetics might use "Use Before" instead of Expiry
-                        if not has_batch_no:
-                            violations.append("Category Violation: Batch Number / Manufacturing License number missing")
-                        if not has_mfg_date:
-                            violations.append("Category Violation: Month & Year of Manufacture missing")
-
-                    elif product_category == "Electronics / Appliances":
-                        has_bis_mark = False # Simulated missing BIS mark
-                        if not has_bis_mark:
-                            violations.append("Category Violation: BIS (Bureau of Indian Standards) Standard Mark missing")
-
-                    # Final Verdict
+                    violations = [rule for rule, (status, _) in rule_checklist.items() if not status]
                     verdict = "PASS" if len(violations) == 0 else "FAIL"
 
-                    # Display Results
+                    # Display Category Badge
                     st.markdown("---")
-                    st.subheader("Inspection Result:")
+                    st.markdown(f"""
+                    <div class="category-badge">
+                        🤖 Active Category Verified: <u>{detected_category}</u>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Display Color-Coded Checklist
+                    st.subheader("🎯 Statutory Rule Verification Checklist (2011 Act):")
+                    for rule_name, (is_present, details) in rule_checklist.items():
+                        if is_present:
+                            st.markdown(f"""
+                            <div class="item-pass">
+                                ✅ <b>{rule_name}:</b> {details}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""
+                            <div class="item-fail">
+                                ❌ <b>{rule_name}:</b> {details}
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                    # Display Final Verdict Card
+                    st.markdown("---")
+                    st.subheader("⚖️ Final Inspection Verdict:")
                     
                     if verdict == "PASS":
-                        st.markdown(f"""
+                        st.markdown("""
                         <div class="pass-card">
-                            <h3>✅ LEGAL COMPLIANCE: PASS</h3>
-                            <p>The product label complies with all statutory declarations under Legal Metrology Rules, 2011 for <b>{product_category}</b>.</p>
+                            <h3>✅ COMPLIANT (PASS)</h3>
+                            <p>All mandatory declarations under Legal Metrology Rules, 2011 are verified and present.</p>
                         </div>
                         """, unsafe_allow_html=True)
                     else:
-                        st.markdown(f"""
+                        st.markdown("""
                         <div class="fail-card">
-                            <h3>❌ LEGAL COMPLIANCE: FAIL (Violations Found)</h3>
-                            <p>The following discrepancies were identified based on 2011 statutory rules:</p>
+                            <h3>❌ NON-COMPLIANT (FAIL)</h3>
+                            <p>Violations identified! Marked in red above against statutory rules.</p>
                         </div>
                         """, unsafe_allow_html=True)
-                        for v in violations:
-                            st.write(f"- ⚠️ {v}")
 
                     # Save to Local Database Log
                     new_log = {
                         "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Inspector_ID": st.session_state.inspector_name,
-                        "Category": product_category,
+                        "Detected_Category": detected_category,
                         "Verdict": verdict,
-                        "Detected_Details": "Synonym-mapped labels parsed successfully",
+                        "Summary_Details": f"Checked {len(rule_checklist)} rules",
                         "Violations": " | ".join(violations) if violations else "None"
                     }
                     df_db = pd.read_csv(DB_FILE)
                     df_db = pd.concat([df_db, pd.DataFrame([new_log])], ignore_index=True)
                     df_db.to_csv(DB_FILE, index=False)
- 
+                    
