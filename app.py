@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import google.generativeai as genai
+from PIL import Image
+import json
 
 # Page Configuration
 st.set_page_config(
@@ -10,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Professional UI, Cards, and Color-coded indicators
+# Custom CSS for Professional UI & Color-coded indicators
 st.markdown("""
     <style>
     .main { background-color: #f4f6f9; }
@@ -31,7 +34,7 @@ if "inspector_name" not in st.session_state:
     st.session_state.inspector_name = ""
 
 # Secure Local Database File for Inspection Logs
-DB_FILE = "legal_metrology_complete_logs.csv"
+DB_FILE = "legal_metrology_gemini_logs.csv"
 if not os.path.exists(DB_FILE):
     df_init = pd.DataFrame(columns=["Timestamp", "Inspector_ID", "Detected_Category", "Verdict", "Summary_Details", "Violations"])
     df_init.to_csv(DB_FILE, index=False)
@@ -82,8 +85,11 @@ elif nav_choice == "Inspection Database & Logs":
             st.info("No inspection history available yet.")
 
 elif nav_choice == "Product Scanner & Rule Engine":
-    st.title("🔍 Ultimate Compliance Engine (2011 Rules & Multi-Category)")
-    st.write("Capture or upload product label via Camera/File. AI will auto-detect category, handle synonyms, and show green/red statutory validation.")
+    st.title("🔍 Real Gemini AI Compliance Engine (2011 Rules)")
+    st.write("Capture or upload product label. Google Gemini AI will analyze the image, detect category, extract details, and enforce rules.")
+
+    # API Key Input
+    gemini_api_key = st.sidebar.text_input("Enter Google Gemini API Key", type="password")
 
     col_img, col_analysis = st.columns([1, 1])
 
@@ -98,78 +104,51 @@ elif nav_choice == "Product Scanner & Rule Engine":
             image_data = st.file_uploader("Upload Label Image", type=["jpg", "jpeg", "png"])
 
         if image_data is not None:
-            st.image(image_data, caption="Selected Product Label", use_container_width=True)
+            img_display = Image.open(image_data)
+            st.image(img_display, caption="Selected Product Label", use_container_width=True)
 
     with col_analysis:
-        st.subheader("📋 Compliance & Rule Verification Panel")
-        
-        # Optional manual override option just in case
-        override_category = st.selectbox(
-            "Select/Confirm Category (Auto-detected by default)", 
-            ["Auto-Detect via AI", "Food & Groceries (FSSAI)", "Medicines & Drugs", "Cosmetics & Beauty", "Electronics & Appliances", "General Commodities / Textiles"]
-        )
-        
-        run_check = st.button("Run AI Scan & Color-Coded Verification")
+        st.subheader("📋 Rule Verification Panel")
+        run_check = st.button("Run Real Gemini AI Compliance Check")
 
         if run_check:
-            if image_data is None:
+            if not gemini_api_key:
+                st.error("Please enter your Google Gemini API Key in the sidebar!")
+            elif image_data is None:
                 st.warning("Please capture or upload a product label image first!")
             else:
-                with st.spinner("AI parsing label, normalizing synonyms, and enforcing category rules..."):
+                try:
+                    genai.configure(api_key=gemini_api_key)
+                    # Using Gemini 1.5 Flash for fast and accurate multimodal extraction
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    # Determine category (simulated auto-detection or manual selection)
-                    if override_category == "Auto-Detect via AI":
-                        detected_category = "Food & Groceries (FSSAI)" # Default AI match example
-                    else:
-                        detected_category = override_category
-
-                    # Rule checklists based on category
-                    if "Food" in detected_category:
-                        rule_checklist = {
-                            "Common Name of Commodity [Rule 6]": (True, "Wheat Flour (Aashirvaad)"),
-                            "Manufacturer / Packer Name & Address [Rule 6]": (True, "ITC Ltd., Kolkata - 700001"),
-                            "Net Quantity (Weight/Volume) [Rule 14]": (True, "1 kg (When packed)"),
-                            "MRP (Inclusive of all taxes) [Rule 18]": (True, "₹58.00"),
-                            "Expiry / Best Before / Use By": (True, "Best Before 4 months (Synonym matched)"),
-                            "FSSAI License Number / Logo (Mandatory)": (False, "Missing / Not Visible on Label!")
-                        }
-                    elif "Medicines" in detected_category:
-                        rule_checklist = {
-                            "Brand / Generic Name": (True, "Paracetamol Tablets IP 500mg"),
-                            "Composition / Active Ingredients": (True, "Each tablet contains Paracetamol IP 500mg"),
-                            "Manufacturer Name & Address": (True, "Sun Pharma Ltd., Mumbai"),
-                            "Batch Number": (True, "BT2026X9"),
-                            "Manufacturing & Expiry Dates": (True, "Mfg: 01/2026, Exp: 12/2028"),
-                            "Manufacturing License Number": (False, "Mfg License Number is missing or unreadable!")
-                        }
-                    elif "Cosmetics" in detected_category:
-                        rule_checklist = {
-                            "Product Name & Description": (True, "Herbal Neem Face Wash"),
-                            "Manufacturer / Packer Address": (True, "Himalaya Wellness, Bengaluru"),
-                            "Net Quantity (Volume)": (True, "100 ml"),
-                            "MRP (Inclusive of taxes)": (True, "₹180.00"),
-                            "Batch Number & Mfg Date": (True, "Batch #BN2409"),
-                            "Expiry / Use Before Date": (False, "Expiry / Use Before Date is missing!")
-                        }
-                    elif "Electronics" in detected_category:
-                        rule_checklist = {
-                            "Product Name & Model Number": (True, "Smart LED Bulb 9W"),
-                            "Manufacturer / Importer Address": (True, "Syska LED, Pune"),
-                            "Electrical Ratings (Voltage/Wattage)": (True, "230V AC, 50Hz, 9W"),
-                            "MRP (Inclusive of taxes)": (True, "₹450.00"),
-                            "BIS Standard Mark (Mandatory)": (False, "BIS Safety Standard Mark is missing!"),
-                            "Warranty Period Details": (True, "1 Year Replacement Warranty")
-                        }
-                    else: # General Commodities / Clothes
-                        rule_checklist = {
-                            "Common / Generic Name [Rule 6]": (True, "Men's Cotton Casual Shirt"),
-                            "Manufacturer / Seller Info [Rule 6]": (True, "Raymonds Apparel Ltd."),
-                            "Size / Dimensions [Rule 13]": (True, "Size: 40 (L)"),
-                            "Net Quantity [Rule 14]": (True, "1 Unit"),
-                            "MRP (Inclusive of taxes) [Rule 18]": (True, "₹1,499.00"),
-                            "Wash Care Instructions": (True, "Machine wash cold")
-                        }
-
+                    img = Image.open(image_data)
+                    
+                    prompt = """
+                    You are an expert Legal Metrology Inspector enforcing the Legal Metrology (Packaged Commodities) Rules, 2011.
+                    Analyze the given product label image carefully and return a JSON response with the following keys:
+                    1. "detected_category": Classify the product into one of these: "Food & Groceries (FSSAI)", "Medicines & Drugs", "Cosmetics & Beauty", "Electronics & Appliances", "General Commodities / Textiles".
+                    2. "rule_checklist": A dictionary where each key is a statutory rule requirement name, and the value is a list containing two elements: [boolean (true if present/valid, false if missing/invalid), string (extracted detail or reason for failure)].
+                    
+                    For example, check for:
+                    - Common Name of Commodity
+                    - Manufacturer / Packer Name & Address
+                    - Net Quantity (Weight/Volume)
+                    - MRP (Inclusive of all taxes)
+                    - Expiry / Best Before / Use By / Validity
+                    - Category specific marks (e.g., FSSAI License Number/Logo for Food, Batch/Mfg date for Cosmetics/Medicines, BIS mark for Electronics).
+                    
+                    Return ONLY valid JSON format without any markdown formatting blocks like ```json.
+                    """
+                    
+                    with st.spinner("Connecting with Google Gemini AI to analyze label and check statutory rules..."):
+                        response = model.generate_content([prompt, img])
+                        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                        ai_result = json.loads(clean_text)
+                    
+                    detected_category = ai_result.get("detected_category", "General Commodities / Textiles")
+                    rule_checklist = ai_result.get("rule_checklist", {})
+                    
                     violations = [rule for rule, (status, _) in rule_checklist.items() if not status]
                     verdict = "PASS" if len(violations) == 0 else "FAIL"
 
@@ -177,13 +156,15 @@ elif nav_choice == "Product Scanner & Rule Engine":
                     st.markdown("---")
                     st.markdown(f"""
                     <div class="category-badge">
-                        🤖 Active Category Verified: <u>{detected_category}</u>
+                        🤖 Real Gemini AI Detected Category: <u>{detected_category}</u>
                     </div>
                     """, unsafe_allow_html=True)
 
                     # Display Color-Coded Checklist
-                    st.subheader("🎯 Statutory Rule Verification Checklist (2011 Act):")
-                    for rule_name, (is_present, details) in rule_checklist.items():
+                    st.subheader("🎯 Statutory Rule Verification Checklist:")
+                    for rule_name, val_list in rule_checklist.items():
+                        is_present = val_list[0]
+                        details = val_list[1]
                         if is_present:
                             st.markdown(f"""
                             <div class="item-pass">
@@ -205,14 +186,14 @@ elif nav_choice == "Product Scanner & Rule Engine":
                         st.markdown("""
                         <div class="pass-card">
                             <h3>✅ COMPLIANT (PASS)</h3>
-                            <p>All mandatory declarations under Legal Metrology Rules, 2011 are verified and present.</p>
+                            <p>All mandatory declarations under Legal Metrology Rules, 2011 are verified by Gemini AI.</p>
                         </div>
                         """, unsafe_allow_html=True)
                     else:
                         st.markdown("""
                         <div class="fail-card">
                             <h3>❌ NON-COMPLIANT (FAIL)</h3>
-                            <p>Violations identified! Marked in red above against statutory rules.</p>
+                            <p>Violations identified! Marked in red above by Gemini AI OCR.</p>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -222,10 +203,13 @@ elif nav_choice == "Product Scanner & Rule Engine":
                         "Inspector_ID": st.session_state.inspector_name,
                         "Detected_Category": detected_category,
                         "Verdict": verdict,
-                        "Summary_Details": f"Checked {len(rule_checklist)} rules",
+                        "Summary_Details": f"Checked {len(rule_checklist)} rules via Gemini AI",
                         "Violations": " | ".join(violations) if violations else "None"
                     }
                     df_db = pd.read_csv(DB_FILE)
                     df_db = pd.concat([df_db, pd.DataFrame([new_log])], ignore_index=True)
                     df_db.to_csv(DB_FILE, index=False)
+
+                except Exception as e:
+                    st.error(f"Error communicating with Gemini API: {e}")
                     
